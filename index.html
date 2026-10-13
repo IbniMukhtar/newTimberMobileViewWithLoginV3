@@ -1,0 +1,2582 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f4d36">
+<title>Timber Logs Manager</title>
+
+<!-- Apply the saved theme (light / dark / system) before first paint -->
+<script>
+(function () {
+  try {
+    var p = localStorage.getItem('timberLogsManager.theme');
+    var t = (p === 'light' || p === 'dark') ? p :
+      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {}
+})();
+</script>
+
+<!-- External libraries (CDN): icons, font, and jsPDF + AutoTable for the PDF report -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Archivo+Narrow:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+/* ============================================================
+   DESIGN TOKENS: timber / industrial, high contrast for outdoor use
+   Spacing scale: 4 8 12 16 20 24 32
+   ============================================================ */
+:root{
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;--s8:32px;
+  --r-sm:10px;--r:16px;--r-lg:22px;
+  --bg:#f7f3ec;            /* warm off-white */
+  --surface:#fffdf9;
+  --surface-2:#efe9dd;
+  --text:#23221f;          /* dark charcoal */
+  --muted:#58544b;
+  --line:#d8d0c0;
+  --brand:#1f4d36;         /* deep forest green */
+  --brand-2:#17402c;
+  --brand-ink:#ffffff;
+  --brand-text:#1f4d36;
+  --brand-soft:#dcebe2;
+  --wood:#7a5230;          /* warm wood brown */
+  --wood-soft:#efe2d0;
+  --amber:#f0a81c;         /* accent */
+  --amber-2:#d8930d;
+  --amber-ink:#2a1d00;
+  --amber-soft:#fdebc2;
+  --danger:#b3261e;--danger-soft:#f9dedc;
+  --ok:#1d6b45;--ok-soft:#d9efe2;
+  --warn:#7a4f00;--warn-soft:#fbecc8;
+  --tintA:#fffdf9;--tintB:#f3ecdf;
+  --focus:#1a6fd1;
+  --shadow:0 1px 2px rgba(35,34,31,.08),0 4px 14px rgba(35,34,31,.07);
+  --hdr-h:60px;--nav-h:64px;
+}
+[data-theme="dark"]{
+  --bg:#151512;--surface:#201f1b;--surface-2:#2b2a24;--text:#f3f1ea;--muted:#bab4a6;--line:#403e35;
+  --brand:#4fae82;--brand-2:#63c196;--brand-ink:#06150d;--brand-text:#74cfa3;--brand-soft:#1d3329;
+  --wood:#c79a68;--wood-soft:#3a2f22;
+  --amber:#f4b53a;--amber-2:#ffc65c;--amber-ink:#241800;--amber-soft:#3b2f12;
+  --danger:#ff8d82;--danger-soft:#3f211e;--ok:#74cfa3;--ok-soft:#1c3a2b;--warn:#f3c76a;--warn-soft:#3b3012;
+  --tintA:#201f1b;--tintB:#27261f;--focus:#79b8ff;
+  --shadow:0 1px 2px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.4);
+}
+
+/* ============================================================
+   AUTHENTICATION
+   ============================================================ */
+body.auth-locked{padding:0;overflow:hidden}
+body.auth-locked #appRoot{display:none!important}
+.auth-screen{
+  min-height:100dvh;display:grid;place-items:center;padding:24px;
+  background:radial-gradient(circle at 50% 0%,var(--brand-soft),transparent 46%),var(--bg);
+}
+.auth-card{
+  width:min(440px,100%);background:var(--surface);border:1px solid var(--line);
+  border-radius:24px;box-shadow:var(--shadow);padding:28px;
+}
+.auth-brand{text-align:center;margin-bottom:24px}
+.auth-logo{
+  width:72px;height:72px;margin:0 auto 14px;border-radius:22px;background:var(--brand);
+  color:var(--brand-ink);display:grid;place-items:center;font-size:2rem;box-shadow:var(--shadow);
+}
+.auth-brand h1{font-size:1.55rem;font-weight:800}
+.auth-brand p{color:var(--muted);margin-top:4px}
+.auth-form{display:grid;gap:4px}
+.auth-password{position:relative}
+.auth-password .input{padding-right:54px}
+.auth-toggle{
+  position:absolute;right:5px;top:50%;transform:translateY(-50%);width:44px;height:44px;
+  border:0;background:transparent;border-radius:10px;color:var(--muted);
+}
+.auth-options{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:2px 0 14px}
+.auth-check{display:inline-flex;align-items:center;gap:8px;min-height:44px;font-weight:700;font-size:.9rem}
+.auth-check input{width:18px;height:18px;accent-color:var(--brand)}
+.auth-error{min-height:1.3em;color:var(--danger);font-size:.9rem;font-weight:700;margin:4px 0 8px}
+.auth-note{
+  margin-top:16px;padding:12px 14px;border-radius:12px;background:var(--surface-2);
+  color:var(--muted);font-size:.8rem;line-height:1.4;
+}
+.auth-meta{margin-top:14px;text-align:center;color:var(--muted);font-size:.78rem}
+.security-card{border-color:var(--brand);background:var(--brand-soft)}
+@media (max-width:480px){.auth-screen{padding:16px}.auth-card{padding:22px;border-radius:20px}}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:"Archivo",system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:16px;line-height:1.45;font-variant-numeric:tabular-nums;
+  padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) + 28px);
+  overscroll-behavior-y:none;
+}
+body.kb-open{padding-bottom:16px}
+body.kb-open .bottom-nav{display:none}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;touch-action:manipulation}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:8px}
+h1,h2,h3,p{margin:0}
+.num{font-family:"Archivo Narrow","Archivo",sans-serif;font-weight:700;letter-spacing:.01em}
+.hint{font-size:.88rem;color:var(--muted)}
+.vh{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+.skip{position:absolute;left:8px;top:-60px;background:var(--brand);color:var(--brand-ink);padding:10px 14px;border-radius:10px;z-index:999;font-weight:700}
+.skip:focus{top:8px}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+/* ============================================================
+   TOP BAR (compact on phones)
+   ============================================================ */
+.topbar{
+  position:sticky;top:0;z-index:80;display:flex;align-items:center;gap:var(--s2);
+  padding:calc(var(--s2) + env(safe-area-inset-top,0px)) var(--s4) var(--s2);
+  background:var(--brand);color:var(--brand-ink);min-height:var(--hdr-h);
+}
+.tb-btn{
+  flex:none;width:44px;height:44px;border-radius:14px;border:0;background:rgba(255,255,255,.14);color:inherit;
+  display:inline-flex;align-items:center;justify-content:center;font-size:1.25rem;
+}
+[data-theme="dark"] .tb-btn{background:rgba(0,0,0,.18)}
+.tb-btn:active{background:rgba(255,255,255,.28)}
+.tb-btn:focus-visible{outline-color:#fff}
+.tb-text{flex:1;min-width:0}
+.tb-text h1{font-size:1.2rem;font-weight:800;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-text p{font-size:.84rem;opacity:.95;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-brand{display:none}
+
+/* ============================================================
+   NAVIGATION: bottom bar (phones) / sidebar (desktop)
+   ============================================================ */
+.bottom-nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:90;display:flex;align-items:flex-end;
+  height:calc(var(--nav-h) + env(safe-area-inset-bottom,0px));padding:0 var(--s2) env(safe-area-inset-bottom,0px);
+  background:var(--surface);border-top:1px solid var(--line);
+}
+.bottom-nav button{
+  flex:1;background:none;border:0;color:var(--muted);font-size:.74rem;font-weight:700;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:var(--nav-h);position:relative;
+}
+.nav-ico{display:flex;align-items:center;justify-content:center;width:52px;height:30px;border-radius:15px;font-size:1.3rem;transition:background-color .15s}
+.bottom-nav button[aria-current="page"]{color:var(--brand-text)}
+.bottom-nav button[aria-current="page"] .nav-ico{background:var(--brand-soft)}
+.bottom-nav .nav-measure{color:var(--text)}
+.bottom-nav .nav-measure .nav-ico{
+  width:56px;height:56px;border-radius:50%;margin-top:-24px;background:var(--brand);color:var(--brand-ink);font-size:1.6rem;
+  border:4px solid var(--surface);box-shadow:var(--shadow);
+}
+.bottom-nav .nav-measure[aria-current="page"] .nav-ico{background:var(--brand)}
+.bottom-nav .nav-measure .nav-label{margin-top:-2px}
+.side-brand{display:none}
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+.shell{display:block}
+.main{padding:var(--s4) var(--s4) 0;max-width:760px;margin:0 auto}
+.view{display:grid;gap:var(--s4)}
+.section-h{font-size:.82rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:var(--s2) var(--s1) calc(-1 * var(--s1))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:var(--s4)}
+.card-flush{padding:0;overflow:hidden}
+.sec-head{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);margin-bottom:var(--s3)}
+.sec-head h2{font-size:1.05rem;font-weight:800}
+.link-btn{background:none;border:0;color:var(--brand-text);font-weight:800;padding:var(--s2) var(--s1);min-height:44px;border-radius:10px}
+.eyebrow{font-size:.74rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:800;padding:4px 12px;border-radius:99px;background:var(--surface-2);color:var(--muted)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.empty{padding:var(--s6) var(--s4);text-align:center;color:var(--muted)}
+.empty i{display:block;font-size:2rem;color:var(--brand-text);margin-bottom:var(--s2)}
+.empty strong{display:block;color:var(--text);font-size:1.05rem;margin-bottom:var(--s1)}
+.empty .btn{margin-top:var(--s3)}
+
+/* Buttons */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);min-height:48px;padding:0 var(--s5);
+  border-radius:14px;border:2px solid transparent;font-weight:800;font-size:1rem;background:var(--surface-2);color:var(--text);
+  transition:transform .08s,background-color .12s,border-color .12s;
+}
+.btn:active:not(:disabled){transform:scale(.97)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{background:var(--brand);color:var(--brand-ink)}
+.btn-primary:active:not(:disabled){background:var(--brand-2)}
+.btn-amber{background:var(--amber);color:var(--amber-ink)}
+.btn-amber:active:not(:disabled){background:var(--amber-2)}
+.btn-outline{background:transparent;border-color:var(--line)}
+.btn-danger{background:var(--danger);color:#fff}
+[data-theme="dark"] .btn-danger{color:#2b0a07}
+.btn-danger-soft{background:var(--danger-soft);color:var(--danger)}
+.btn-sm{min-height:44px;padding:0 var(--s4);font-size:.92rem;border-radius:12px}
+.btn-xl{min-height:60px;font-size:1.15rem;width:100%;border-radius:16px}
+.btn-block{width:100%}
+.btn-onhero{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.55);color:var(--brand-ink)}
+[data-theme="dark"] .btn-onhero{background:rgba(0,0,0,.2);border-color:rgba(0,0,0,.45)}
+.btn.busy{pointer-events:none;opacity:.75}
+.spinner{width:16px;height:16px;border:3px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn-row{display:flex;gap:var(--s2);flex-wrap:wrap}
+.btn-row>.btn{flex:1}
+
+/* Forms */
+.field{display:grid;gap:6px;margin-bottom:var(--s4)}
+.field label,.label{font-weight:700;font-size:.92rem}
+.req{color:var(--danger)}
+.input,.select{
+  width:100%;min-height:52px;padding:0 var(--s4);border-radius:14px;border:2px solid var(--line);background:var(--surface);color:var(--text);font-size:1.05rem;
+}
+.select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 20px) 50%,calc(100% - 14px) 50%;background-size:6px 6px;background-repeat:no-repeat;padding-right:36px}
+.input:focus,.select:focus{border-color:var(--brand);outline:0;box-shadow:0 0 0 4px color-mix(in srgb,var(--brand) 25%,transparent)}
+.input.is-invalid{border-color:var(--danger)}
+.err{color:var(--danger);font-size:.88rem;font-weight:600;min-height:0}
+.err:empty{display:none}
+.switch{position:relative;display:inline-flex;align-items:center;gap:var(--s2);font-weight:700;font-size:.9rem;cursor:pointer;min-height:44px}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.switch .track{width:48px;height:28px;border-radius:14px;background:var(--line);position:relative;transition:background-color .15s;flex:none}
+.switch .track::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .15s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.switch input:checked+.track{background:var(--brand)}
+.switch input:checked+.track::after{transform:translateX(20px)}
+.switch input:focus-visible+.track{outline:3px solid var(--focus);outline-offset:2px}
+
+/* ============================================================
+   HOME
+   ============================================================ */
+.greet{font-size:1.6rem;font-weight:800;line-height:1.15;margin:var(--s1) var(--s1) 0}
+.load-card{background:var(--brand);color:var(--brand-ink);border-color:transparent}
+.load-card .eyebrow{color:inherit;opacity:.85}
+.lc-top{display:flex;justify-content:space-between;align-items:center;gap:var(--s2);margin-bottom:var(--s3)}
+.lc-name{font-size:1.5rem;font-weight:800;line-height:1.2;word-break:break-word}
+.lc-meta{opacity:.92;font-size:.95rem;margin-top:2px}
+.lc-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2);margin:var(--s4) 0}
+.lc-stats b{display:block;font-size:1.7rem;line-height:1.1}
+.lc-stats span{font-size:.78rem;opacity:.9;font-weight:700}
+.load-card .pill{background:rgba(255,255,255,.2);color:inherit}
+[data-theme="dark"] .load-card .pill{background:rgba(0,0,0,.22)}
+.btn-cont{background:var(--amber);color:var(--amber-ink);min-height:62px;font-size:1.2rem;width:100%;border-radius:16px}
+.btn-cont:active{background:var(--amber-2)}
+.load-card .btn-ghost{background:transparent;border-color:rgba(255,255,255,.5);color:inherit;width:100%;margin-top:var(--s2)}
+[data-theme="dark"] .load-card .btn-ghost{border-color:rgba(0,0,0,.4)}
+.qa-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}
+.qa-grid .btn{min-height:56px;flex-direction:column;gap:2px;font-size:.95rem}
+.qa-grid .btn i{font-size:1.3rem;color:var(--brand-text)}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:var(--s3) var(--s4);box-shadow:var(--shadow);min-width:0}
+.stat .k{font-size:.74rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.stat .v{font-size:1.65rem;line-height:1.15;word-break:break-word}
+.stat .v small{font-size:.8rem;color:var(--muted);font-family:"Archivo",sans-serif;font-weight:600}
+.stat.primary{background:var(--brand-soft);border-color:transparent}
+.save-status{font-size:.82rem;color:var(--muted);text-align:center;min-height:1.2em}
+.save-status.bad{color:var(--danger);font-weight:700}
+.activity{list-style:none;margin:0;padding:0}
+.activity li{display:flex;gap:var(--s3);padding:var(--s3) 0;border-bottom:1px solid var(--line);font-size:.95rem}
+.activity li:last-child{border-bottom:0}
+.activity .t{flex:none;min-width:46px;color:var(--muted);font-size:.82rem;padding-top:2px}
+
+/* ============================================================
+   MEASURE: the screen used all day in the field
+   ============================================================ */
+.banner{
+  display:flex;align-items:center;gap:var(--s3);width:100%;text-align:left;padding:var(--s3) var(--s4);min-height:52px;
+  border-radius:14px;border:2px solid var(--amber);background:var(--amber-soft);color:var(--text);font-weight:700;
+}
+.banner i:first-child{color:var(--amber-2);font-size:1.3rem}
+.banner span{flex:1}
+.hero{background:var(--brand);color:var(--brand-ink);border-radius:var(--r-lg);padding:var(--s5) var(--s4) var(--s4);text-align:center;box-shadow:var(--shadow)}
+.hero .eyebrow{color:inherit;opacity:.88;letter-spacing:.14em}
+.hero-height{font-size:clamp(3rem,17vw,4.2rem);line-height:1.05;margin:var(--s1) 0 var(--s3);font-weight:800}
+.hero.unset .hero-height{opacity:.55}
+.hero.flash{animation:herofl .5s ease}
+@keyframes herofl{0%{filter:brightness(1.4)}100%{filter:none}}
+.hchips{display:flex;gap:var(--s2);overflow-x:auto;padding:var(--s3) 2px var(--s1);margin:0 calc(-1 * var(--s1));scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:none;justify-content:flex-start}
+.hchips::-webkit-scrollbar{display:none}
+.hchip{
+  flex:none;min-height:44px;padding:0 var(--s4);border-radius:22px;border:2px solid rgba(255,255,255,.45);background:transparent;color:inherit;font-weight:800;font-size:.98rem;scroll-snap-align:start;
+}
+[data-theme="dark"] .hchip{border-color:rgba(0,0,0,.4)}
+.hchip.active{background:var(--brand-ink);color:var(--brand);border-color:var(--brand-ink)}
+[data-theme="dark"] .hchip.active{background:#06150d;color:var(--brand)}
+.hero-stats{display:grid;grid-template-columns:.8fr .8fr 1.4fr;gap:var(--s2);margin-top:var(--s3);padding-top:var(--s3);border-top:1px solid rgba(255,255,255,.3)}
+[data-theme="dark"] .hero-stats{border-top-color:rgba(0,0,0,.3)}
+.hero-stats .k{font-size:.7rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;opacity:.88}
+.hero-stats .v{font-size:1.9rem;line-height:1.1}
+.hero-stats .v small{font-size:.8rem;font-family:"Archivo",sans-serif;font-weight:700;opacity:.9}
+.bump{animation:bump .3s ease}
+@keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.18)}100%{transform:scale(1)}}
+.hero-foot{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);margin-top:var(--s3);text-align:left}
+.added-msg{font-weight:800;font-size:.98rem;min-height:1.4em;opacity:0;transition:opacity .2s;flex:1}
+.added-msg.show{opacity:1}
+.mini-bar{
+  position:fixed;left:0;right:0;top:var(--hdr-h);z-index:70;display:flex;justify-content:center;gap:var(--s4);align-items:center;
+  padding:var(--s2) var(--s4);background:var(--amber);color:var(--amber-ink);font-weight:800;font-size:1rem;box-shadow:var(--shadow);
+}
+.girth-sec{display:grid;gap:var(--s3)}
+.girth-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+@media (min-width:480px){.girth-grid{grid-template-columns:repeat(6,1fr);gap:var(--s2)}}
+.gbtn{
+  position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60px;padding:6px 0 4px;
+  border-radius:14px;border:2px solid var(--line);background:var(--tintA);color:var(--text);user-select:none;-webkit-user-select:none;
+  transition:transform .07s,background-color .12s,border-color .12s;
+}
+.gbtn.d1,.gbtn.d3{background:var(--tintB)}
+.gbtn .gn{font-family:"Archivo Narrow","Archivo",sans-serif;font-weight:700;font-size:1.55rem;line-height:1}
+.gbtn .gu{font-size:.62rem;font-weight:700;color:var(--muted);line-height:1.2}
+.gbtn:active:not(:disabled){transform:scale(.92);background:var(--brand-soft);border-color:var(--brand)}
+.gbtn.sel{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.gbtn.sel .gu{color:inherit}
+.gbtn.hit{animation:hit .38s ease}
+@keyframes hit{0%{background:var(--brand);color:var(--brand-ink)}100%{}}
+.gbtn:disabled{opacity:.4;cursor:not-allowed}
+.gtally{position:absolute;top:-6px;right:-4px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--amber);color:var(--amber-ink);font-size:.72rem;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg)}
+.gtally.pop{animation:bump .3s ease}
+.custom-wrap{display:grid;gap:var(--s3);margin-top:var(--s2)}
+.input-wrap{position:relative}
+.input-wrap .input{font-size:1.6rem;font-weight:800;min-height:60px;padding-right:96px;font-family:"Archivo Narrow","Archivo",sans-serif}
+.input-wrap .suffix{position:absolute;right:56px;top:50%;transform:translateY(-50%);font-weight:700;color:var(--muted)}
+.input-wrap .clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:12px;border:0;background:transparent;color:var(--muted);font-size:1.15rem}
+
+/* Log rows: compact, scannable */
+.rlist{list-style:none;margin:0;padding:0;display:grid;gap:var(--s2)}
+.lrow{
+  display:grid;grid-template-columns:52px 1fr auto auto;align-items:center;gap:var(--s2) var(--s3);min-height:64px;padding:var(--s2) var(--s2) var(--s2) var(--s3);
+  border:1px solid var(--line);border-radius:14px;background:var(--surface);cursor:pointer;position:relative;
+}
+.lrow:active{background:var(--surface-2)}
+.lrow.pinned{background:var(--amber-soft);border-color:var(--amber);box-shadow:inset 5px 0 0 var(--amber)}
+.lrow.new{animation:rowin .35s ease}
+@keyframes rowin{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.lr-num{font-size:1.15rem;color:var(--muted)}
+.lr-girth{font-size:1.5rem;line-height:1.05}
+.lr-girth small{font-size:.9rem}
+.lr-sub{font-size:.84rem;color:var(--muted);margin-top:1px}
+.lr-sub .ln{display:inline-block;background:var(--brand-soft);color:var(--brand-text);border-radius:6px;padding:0 6px;font-weight:800;font-size:.74rem;margin-left:4px}
+.lr-vol{text-align:right;line-height:1.1}
+.lr-vol b{font-size:1.3rem;display:block}
+.lr-vol small{font-size:.72rem;color:var(--muted);font-weight:700}
+.lr-end{display:flex;align-items:center;gap:2px}
+.lr-pin{color:var(--amber-2);font-size:1rem}
+.lr-more{width:44px;height:44px;border-radius:12px;border:0;background:transparent;color:var(--muted);font-size:1.3rem;display:flex;align-items:center;justify-content:center}
+
+/* ============================================================
+   LOGS (all) + filters
+   ============================================================ */
+.tools{display:grid;gap:var(--s2)}
+.tool-row{display:flex;gap:var(--s2)}
+.tool-row .input{min-height:48px;flex:1;font-size:1rem}
+.fpanel{display:grid;gap:var(--s3);grid-template-columns:1fr 1fr;padding:var(--s3);background:var(--surface-2);border-radius:14px}
+.fpanel .field{margin:0}
+.fpanel .select{min-height:48px;font-size:1rem}
+.fpanel .wide{grid-column:1/-1}
+.badge{background:var(--amber);color:var(--amber-ink);border-radius:99px;font-size:.74rem;padding:1px 8px;font-weight:800}
+.results{font-size:.88rem;color:var(--muted);padding:0 var(--s1)}
+.counter-card{display:flex;justify-content:space-between;align-items:center;gap:var(--s3);flex-wrap:wrap}
+.counter-card .big{font-size:1.35rem}
+
+/* ============================================================
+   LOADS / LINES / REPORTS / SETTINGS
+   ============================================================ */
+.segmented{display:grid;grid-template-columns:1fr 1fr;background:var(--surface-2);border-radius:14px;padding:4px;gap:4px}
+.segmented button{min-height:44px;border:0;border-radius:11px;background:transparent;font-weight:800;color:var(--muted)}
+.segmented button[aria-selected="true"]{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3) var(--s4)}
+.kv .k{font-size:.74rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.kv .v{font-weight:700;word-break:break-word}
+.line-card{display:grid;gap:var(--s3)}
+.line-card.current{border:2px solid var(--brand)}
+.line-top{display:flex;justify-content:space-between;align-items:center;gap:var(--s2);flex-wrap:wrap}
+.line-title{font-size:1.4rem;line-height:1.1}
+.lm{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)}
+.lm .k{font-size:.72rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.lm .v{font-size:1.3rem;line-height:1.15}
+.lm .v small{font-size:.78rem;color:var(--muted);font-family:"Archivo",sans-serif;font-weight:600}
+.lines-list{display:grid;gap:var(--s3)}
+.load-item{display:grid;gap:var(--s2);text-align:left;width:100%;cursor:pointer}
+.load-item:active{background:var(--surface-2)}
+.li-top{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s3)}
+.li-name{font-weight:800;font-size:1.1rem;word-break:break-word}
+.li-meta{color:var(--muted);font-size:.9rem}
+.li-stats{display:flex;gap:var(--s5);align-items:baseline;flex-wrap:wrap}
+.li-stats b{font-size:1.25rem}
+.li-stats small{color:var(--muted);font-weight:700;font-size:.78rem}
+.hbar-row{display:grid;grid-template-columns:64px 1fr auto;gap:var(--s3);align-items:center;margin:var(--s3) 0;font-size:.92rem}
+.hbar-track{background:var(--surface-2);border-radius:8px;height:24px;overflow:hidden}
+.hbar{background:var(--brand);height:100%;border-radius:8px;min-width:3px;transition:width .35s ease}
+.hbar-val{font-weight:800;text-align:right}
+.chart-empty{padding:var(--s6) var(--s2);text-align:center;color:var(--muted)}
+.chart-svg text{fill:var(--muted);font-size:11px;font-family:"Archivo",sans-serif}
+.chart-svg .grid{stroke:var(--line);stroke-width:1}
+.chart-svg .bar{fill:var(--brand)}
+.more-stats{margin:var(--s3) 0 0;display:grid}
+.more-stats div{display:flex;justify-content:space-between;gap:var(--s3);padding:var(--s3) 0;border-bottom:1px solid var(--line)}
+.more-stats div:last-child{border-bottom:0}
+.more-stats dt{color:var(--muted);font-weight:600}
+.more-stats dd{margin:0;font-weight:800;text-align:right}
+.export-list{display:grid;gap:var(--s3)}
+.menu-list{display:grid;gap:var(--s2)}
+.menu-btn{
+  display:flex;align-items:center;gap:var(--s3);width:100%;text-align:left;min-height:56px;padding:var(--s2) var(--s4);
+  border-radius:14px;border:0;background:var(--surface-2);font-weight:800;font-size:1.02rem;
+}
+.menu-btn i{font-size:1.3rem;color:var(--brand-text);width:26px;text-align:center}
+.menu-btn small{display:block;font-weight:500;color:var(--muted);font-size:.82rem}
+.menu-btn.danger,.menu-btn.danger i{color:var(--danger)}
+.menu-btn:active{filter:brightness(.95)}
+.set-row{display:flex;justify-content:space-between;align-items:center;gap:var(--s4);padding:var(--s3) 0;border-bottom:1px solid var(--line)}
+.set-row:last-child{border-bottom:0}
+.set-row .t{font-weight:800}
+.set-row .d{font-size:.85rem;color:var(--muted)}
+.set-row .select{width:auto;min-width:130px;max-width:46vw}
+.kvl{display:grid;margin:0}
+.kvl div{display:flex;justify-content:space-between;gap:var(--s3);padding:var(--s3) 0;border-bottom:1px solid var(--line)}
+.kvl dt{color:var(--muted);font-weight:600}
+.kvl dd{margin:0;font-weight:800;text-align:right;word-break:break-word}
+
+/* ============================================================
+   SHEETS (bottom sheets on phones, centred dialogs on larger screens)
+   ============================================================ */
+dialog.sheet{
+  border:0;padding:0;background:var(--surface);color:var(--text);margin:auto 0 0;width:100%;max-width:100%;max-height:92dvh;
+  border-radius:var(--r-lg) var(--r-lg) 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.35);
+}
+dialog.sheet::backdrop{background:rgba(20,18,12,.6)}
+dialog.sheet[open]{animation:sheetup .22s ease-out}
+@keyframes sheetup{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+.sheet-in{padding:var(--s2) var(--s5) calc(var(--s5) + env(safe-area-inset-bottom,0px));overflow:auto;max-height:92dvh}
+.grab{width:44px;height:5px;border-radius:3px;background:var(--line);margin:var(--s2) auto var(--s3)}
+.sheet h3{font-size:1.3rem;font-weight:800}
+.sheet .sub{color:var(--muted);margin:2px 0 var(--s4)}
+.sheet-actions{display:flex;gap:var(--s3);margin-top:var(--s5)}
+.sheet-actions .btn{flex:1}
+.chip-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:var(--s2)}
+.chip-grid button{min-height:48px;border-radius:12px;border:2px solid var(--line);background:var(--tintA);font-weight:800;font-size:1.1rem}
+.chip-grid button.sel{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.chip-grid button:active{transform:scale(.94)}
+.h-selected{display:flex;justify-content:space-between;align-items:center;background:var(--brand-soft);color:var(--brand-text);border-radius:14px;padding:var(--s3) var(--s4);margin-top:var(--s4)}
+.h-selected strong{font-size:2rem;line-height:1}
+.edit-row{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}
+.vol-preview{display:flex;justify-content:space-between;align-items:center;background:var(--brand-soft);color:var(--brand-text);border-radius:14px;padding:var(--s3) var(--s4);margin-top:var(--s2)}
+.vol-preview strong{font-size:1.8rem}
+.act-title{font-size:1.3rem;font-weight:800}
+@media (min-width:640px){
+  dialog.sheet{margin:auto;width:min(520px,calc(100vw - 32px));border-radius:var(--r-lg)}
+  .sheet-in{padding-bottom:var(--s5)}
+  .grab{display:none}
+}
+
+/* ============================================================
+   TOASTS
+   ============================================================ */
+.toasts{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) + 14px);z-index:2000;display:grid;gap:var(--s2);width:min(460px,calc(100vw - 24px));pointer-events:none}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);border-radius:14px;background:#262520;color:#fff;font-weight:700;font-size:.95rem;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:toastin .2s ease}
+[data-theme="dark"] .toast{background:#f3f1ea;color:#1c1b17}
+@keyframes toastin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.toast i{flex:none;font-size:1.15rem}
+.toast.success i{color:#5fd49a}.toast.warn i{color:#f6c453}.toast.error i{color:#ff8f84}.toast.info i{color:#7dbdff}
+[data-theme="dark"] .toast.success i{color:#1d6b45}[data-theme="dark"] .toast.warn i{color:#7a4f00}[data-theme="dark"] .toast.error i{color:#b3261e}[data-theme="dark"] .toast.info i{color:#1a62b0}
+.toast .m{flex:1}
+.toast .act{background:transparent;border:2px solid currentColor;color:inherit;border-radius:10px;padding:0 var(--s3);min-height:40px;font-weight:800}
+
+/* ============================================================
+   DESKTOP: sidebar + two-column measuring layout
+   ============================================================ */
+@media (min-width:992px){
+  body{padding-bottom:var(--s8)}
+  .topbar{padding-left:var(--s6);padding-right:var(--s6)}
+  .shell{display:flex;align-items:flex-start;max-width:1500px;margin:0 auto}
+  .bottom-nav{
+    position:sticky;top:var(--hdr-h);bottom:auto;left:auto;right:auto;flex:none;width:224px;height:calc(100vh - var(--hdr-h));
+    flex-direction:column;align-items:stretch;justify-content:flex-start;gap:var(--s1);padding:var(--s4) var(--s3);background:transparent;border-top:0;border-right:1px solid var(--line);
+  }
+  .bottom-nav button{flex:none;flex-direction:row;justify-content:flex-start;height:52px;gap:var(--s3);padding:0 var(--s3);border-radius:14px;font-size:1rem}
+  .nav-ico,.bottom-nav .nav-measure .nav-ico{width:34px;height:34px;border-radius:10px;margin:0;border:0;box-shadow:none;font-size:1.25rem;background:transparent;color:inherit}
+  .bottom-nav .nav-measure .nav-label{margin:0}
+  .bottom-nav button[aria-current="page"]{background:var(--brand-soft)}
+  .bottom-nav .nav-measure .nav-ico{background:var(--brand);color:var(--brand-ink)}
+  .side-brand{display:flex;align-items:center;gap:var(--s3);padding:var(--s2) var(--s2) var(--s4);font-weight:800;font-size:1.1rem}
+  .side-brand span:first-child{font-size:1.6rem}
+  .main{max-width:1180px;flex:1;min-width:0;padding:var(--s6) var(--s6) 0;margin:0}
+  .toasts{bottom:var(--s6)}
+  .mini-bar{left:224px}
+  #view-home{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
+  #view-home>.wide,#view-home>.section-h.wide{grid-column:1/-1}
+  .measure-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(340px,1fr);gap:var(--s5);align-items:start}
+  .measure-side{position:sticky;top:calc(var(--hdr-h) + var(--s4))}
+  .girth-grid{grid-template-columns:repeat(6,1fr)}
+  .stat-grid{grid-template-columns:repeat(3,1fr)}
+  .main-wide{max-width:none}
+  #view-reports,#view-settings,#view-loads,#view-logs{max-width:880px}
+}
+.measure-grid{display:grid;gap:var(--s4)}
+.measure-main{display:grid;gap:var(--s4);min-width:0}
+@media (min-width:480px) and (max-width:991px){.main{padding-left:var(--s6);padding-right:var(--s6)}}
+
+/* ============================================================
+   PRINT
+   ============================================================ */
+#printSheet{display:none}
+@media print{
+  @page{margin:14mm}
+  html,body{background:#fff!important;color:#000!important}
+  body{padding:0!important}
+  body>*:not(#printSheet){display:none!important}
+  #printSheet{display:block!important;font-family:Arial,Helvetica,sans-serif;font-size:10.5pt}
+  #printSheet h1{font-size:18pt;text-align:center;margin:0}
+  #printSheet h2{font-size:12.5pt;margin:12px 0 4px}
+  #printSheet .co{text-align:center;margin:0 0 4px}
+  #printSheet .rule{border-top:2px solid #1f4d36;margin:8px 0 12px}
+  #printSheet table{width:100%;border-collapse:collapse;margin:6px 0 12px}
+  #printSheet th,#printSheet td{border:1px solid #888;padding:3px 8px;text-align:left}
+  #printSheet th{background:#e6efe9}
+  #printSheet .r{text-align:right}
+  #printSheet .load td{border:0;padding:2px 8px 2px 0}
+  #printSheet .big{font-size:15pt;font-weight:bold}
+  #printSheet .linehead th{background:#1f4d36;color:#fff}
+  #printSheet .sign{display:flex;justify-content:space-between;gap:40px;margin-top:46px}
+  #printSheet .sign div{flex:1;border-top:1px solid #000;padding-top:4px;font-size:10pt}
+  #printSheet tr{page-break-inside:avoid}
+}
+</style>
+</head>
+
+<body>
+<div id="appRoot">
+<a class="skip" href="#girthGrid">Skip to girth buttons</a>
+
+<!-- ============================ TOP BAR ============================ -->
+<header class="topbar" id="topbar">
+  <button type="button" class="tb-btn" id="backBtn" aria-label="Back" hidden><i class="bi bi-arrow-left" aria-hidden="true"></i></button>
+  <div class="tb-text">
+    <h1 id="tbTitle">Timber Logs</h1>
+    <p id="tbSub"></p>
+  </div>
+  <button type="button" class="tb-btn" id="menuBtn" aria-label="Measure menu" hidden><i class="bi bi-three-dots-vertical" aria-hidden="true"></i></button>
+  <button type="button" class="tb-btn" id="themeBtn" aria-label="Switch to dark mode"><i class="bi bi-moon-stars" aria-hidden="true"></i></button>
+</header>
+
+<div class="shell">
+
+<nav class="bottom-nav" aria-label="Main navigation">
+  <div class="side-brand"><span aria-hidden="true">🪵</span><span>Timber Logs Manager</span></div>
+  <button type="button" data-view="home"><span class="nav-ico"><i class="bi bi-house-door" aria-hidden="true"></i></span><span class="nav-label">Home</span></button>
+  <button type="button" data-view="loads"><span class="nav-ico"><i class="bi bi-boxes" aria-hidden="true"></i></span><span class="nav-label">Loads</span></button>
+  <button type="button" data-view="measure" class="nav-measure"><span class="nav-ico"><i class="bi bi-rulers" aria-hidden="true"></i></span><span class="nav-label">Measure</span></button>
+  <button type="button" data-view="reports"><span class="nav-ico"><i class="bi bi-bar-chart-line" aria-hidden="true"></i></span><span class="nav-label">Reports</span></button>
+  <button type="button" data-view="settings"><span class="nav-ico"><i class="bi bi-gear" aria-hidden="true"></i></span><span class="nav-label">Settings</span></button>
+</nav>
+
+<main class="main" id="main">
+
+<!-- ============================ HOME ============================ -->
+<section id="view-home" class="view" aria-label="Home">
+  <h2 class="greet wide" id="greetText">Good morning 👋</h2>
+  <article class="card load-card" id="homeLoadCard">
+    <div class="lc-top"><span class="eyebrow">Current load</span><span class="pill" id="hlPill"></span></div>
+    <div class="lc-name" id="hlName">No load set up yet</div>
+    <div class="lc-meta" id="hlMeta">Add the supplier and vehicle to begin.</div>
+    <div class="lc-stats">
+      <div><b class="num" id="hlLogs">0</b><span>Logs</span></div>
+      <div><b class="num" id="hlVol">0.00</b><span class="u-label">cu.ft</span></div>
+      <div><b class="num" id="hlLine">Line 1</b><span>Current line</span></div>
+    </div>
+    <button type="button" class="btn btn-cont" id="continueBtn"><i class="bi bi-rulers" aria-hidden="true"></i> Continue measuring</button>
+    <button type="button" class="btn btn-ghost btn-sm" id="editLoadBtn"><i class="bi bi-pencil-square" aria-hidden="true"></i> <span id="editLoadLabel">Add load details</span></button>
+  </article>
+
+  <div>
+    <h3 class="section-h">Quick actions</h3>
+    <div class="qa-grid" style="margin-top:12px">
+      <button type="button" class="btn" id="qaNew"><i class="bi bi-plus-circle" aria-hidden="true"></i> New load</button>
+      <button type="button" class="btn" id="qaLoads"><i class="bi bi-boxes" aria-hidden="true"></i> View loads</button>
+    </div>
+  </div>
+
+  <div class="wide">
+    <h3 class="section-h" style="margin-bottom:12px">Overview</h3>
+    <div class="stat-grid">
+      <div class="stat"><div class="k">Total logs</div><div class="v num" id="sLogs">0</div></div>
+      <div class="stat primary"><div class="k">Total volume</div><div class="v num"><span id="sVol">0.00</span> <small class="u-label">cu.ft</small></div></div>
+      <div class="stat"><div class="k">Current line</div><div class="v num" id="sLine">Line 1</div></div>
+      <div class="stat"><div class="k">Completed lines</div><div class="v num" id="sDone">0</div></div>
+      <div class="stat"><div class="k">Average girth</div><div class="v num"><span id="sAvg">0.00</span><small>"</small></div></div>
+      <div class="stat"><div class="k">Current height</div><div class="v num" id="sHeight">--</div></div>
+    </div>
+  </div>
+  <div class="save-status wide" id="saveStatus" role="status"></div>
+
+  <section class="card wide" aria-labelledby="actTitle">
+    <div class="sec-head"><h2 id="actTitle">Recent activity</h2></div>
+    <ul class="activity" id="activityList"></ul>
+  </section>
+</section>
+
+<!-- ============================ LOADS ============================ -->
+<section id="view-loads" class="view" aria-label="Loads" hidden>
+  <div class="segmented" role="tablist" aria-label="Loads">
+    <button type="button" role="tab" id="segCurrent" aria-selected="true">Current load</button>
+    <button type="button" role="tab" id="segHistory" aria-selected="false">History</button>
+  </div>
+
+  <div id="loadsCurrent" class="view">
+    <article class="card">
+      <div class="sec-head"><h2>Load details</h2><span class="pill" id="lcPill"></span></div>
+      <div class="kv" id="lcKv"></div>
+      <button type="button" class="btn btn-sm btn-block" id="lcEditBtn" style="margin-top:16px"><i class="bi bi-pencil-square" aria-hidden="true"></i> <span id="lcEditLabel">Edit details</span></button>
+    </article>
+
+    <h3 class="section-h">Current line</h3>
+    <article class="card line-card current">
+      <div class="line-top"><div class="line-title num" id="curLineTitle">Line 1</div><span class="pill warn">In progress</span></div>
+      <div class="lm">
+        <div><div class="k">Logs</div><div class="v num" id="curLineCount">0</div></div>
+        <div><div class="k">Volume</div><div class="v num" id="curLineVol">0.00</div></div>
+        <div><div class="k">Avg girth</div><div class="v num" id="curLineAvg">0.00</div></div>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn btn-primary btn-sm" id="linesFinishBtn"><i class="bi bi-flag" aria-hidden="true"></i> Finish line</button>
+        <button type="button" class="btn btn-sm" id="linesRenameBtn"><i class="bi bi-pencil" aria-hidden="true"></i> Line no.</button>
+        <button type="button" class="btn btn-sm" id="linesOpenCur"><i class="bi bi-list-ul" aria-hidden="true"></i> Logs</button>
+      </div>
+    </article>
+
+    <h3 class="section-h">Completed lines</h3>
+    <div class="lines-list" id="linesList"></div>
+    <div class="card empty" id="linesEmpty"><i class="bi bi-layers" aria-hidden="true"></i><strong>No completed lines yet.</strong>Finish the current line to start the next one.</div>
+    <div class="card"><div id="linesTotalText"></div></div>
+
+    <h3 class="section-h">This load</h3>
+    <div class="menu-list">
+      <button type="button" class="menu-btn" id="sessInfoBtn"><i class="bi bi-info-circle" aria-hidden="true"></i><span>Load information</span></button>
+      <button type="button" class="menu-btn" id="sessResetBtn"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i><span>Reset load<small>Back to Line 1, keeps supplier details</small></span></button>
+      <button type="button" class="menu-btn" id="sessNewBtn"><i class="bi bi-plus-circle" aria-hidden="true"></i><span>Start a new load<small>Saves this one to History first</small></span></button>
+    </div>
+  </div>
+
+  <div id="loadsHistory" class="view" hidden>
+    <button type="button" class="btn btn-sm btn-block" id="saveSessionBtn"><i class="bi bi-floppy" aria-hidden="true"></i> Save current load to history</button>
+    <div class="lines-list" id="histList"></div>
+    <div class="card empty" id="histEmpty"><i class="bi bi-boxes" aria-hidden="true"></i><strong>No saved loads yet</strong>Loads are saved here when you start a new load, reset, or restore a backup.</div>
+  </div>
+</section>
+
+<!-- ============================ MEASURE ============================ -->
+<section id="view-measure" class="view" aria-label="Measure logs" hidden>
+  <div class="measure-grid">
+    <div class="measure-main">
+      <button type="button" class="banner" id="loadBanner" hidden><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span>Add load details (needed for the PDF)</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+
+      <article class="hero" id="hero" aria-label="Current height and totals">
+        <div class="eyebrow">Current height</div>
+        <div class="hero-height num" id="heroHeight">--</div>
+        <button type="button" class="btn btn-onhero" id="changeHeightBtn"><i class="bi bi-arrows-expand" aria-hidden="true"></i> <span id="changeHeightLabel">Change height</span></button>
+        <div class="hchips" id="heightChips" role="group" aria-label="Common and recent heights"></div>
+        <div class="hero-stats">
+          <div><div class="k" id="heroLineK">Line</div><div class="v num" id="heroLine">1</div></div>
+          <div><div class="k">Logs</div><div class="v num" id="heroLogs">0</div></div>
+          <div><div class="k">Volume</div><div class="v num"><span id="heroVol">0.00</span> <small class="u-label">cu.ft</small></div></div>
+        </div>
+        <div class="hero-foot">
+          <span class="added-msg" id="addedMsg" role="status" aria-live="polite"></span>
+          <button type="button" class="btn btn-onhero btn-sm" id="finishLineBtn"><i class="bi bi-flag" aria-hidden="true"></i> Finish line</button>
+        </div>
+      </article>
+
+      <section class="girth-sec" aria-labelledby="girthTitle">
+        <div class="sec-head" style="margin:0">
+          <h2 id="girthTitle">Select girth</h2>
+          <label class="switch"><span>Tap adds instantly</span><input type="checkbox" id="tapAddToggle" role="switch"><span class="track" aria-hidden="true"></span></label>
+        </div>
+        <div class="girth-grid" id="girthGrid" role="group" aria-label="Quick girth in inches"></div>
+
+        <div class="custom-wrap" id="customWrap">
+          <div class="field" style="margin:0">
+            <label for="girthInput">Custom girth</label>
+            <div class="input-wrap">
+              <input id="girthInput" class="input" type="number" inputmode="decimal" enterkeyhint="done" min="0" step="any" placeholder="e.g. 32.5" aria-describedby="girthErr" autocomplete="off">
+              <span class="suffix">in</span>
+              <button type="button" class="clear" id="clearGirthBtn" aria-label="Clear girth"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+            </div>
+            <div class="err" id="girthErr" role="alert"></div>
+          </div>
+          <button type="button" class="btn btn-amber btn-xl" id="addLogBtn"><i class="bi bi-plus-lg" aria-hidden="true"></i> ADD LOG</button>
+          <p class="hint" id="addHint"></p>
+        </div>
+      </section>
+    </div>
+
+    <aside class="measure-side">
+      <section class="card" aria-labelledby="recentTitle">
+        <div class="sec-head"><h2 id="recentTitle">Recent logs</h2><button type="button" class="link-btn" id="viewAllBtn">View all</button></div>
+        <ul class="rlist" id="recentList" aria-label="Recent logs"></ul>
+        <div class="empty" id="recentEmpty"><i class="bi bi-tree" aria-hidden="true"></i><strong>No logs yet</strong>Choose a height, then tap a girth to add your first log.</div>
+      </section>
+    </aside>
+  </div>
+</section>
+
+<!-- ============================ ALL LOGS ============================ -->
+<section id="view-logs" class="view" aria-label="All logs" hidden>
+  <div class="card counter-card">
+    <div><div class="eyebrow">Current line</div><div class="big num" id="logsCounter">Line 1 • 0 Logs • 0.00 cu.ft</div></div>
+    <div class="btn-row" style="flex:none">
+      <button type="button" class="btn btn-sm btn-primary" id="logsFinishBtn"><i class="bi bi-flag" aria-hidden="true"></i> Finish line</button>
+      <button type="button" class="btn btn-sm btn-danger-soft" id="clearLogsBtn"><i class="bi bi-trash3" aria-hidden="true"></i> Clear all</button>
+    </div>
+  </div>
+  <div class="tools">
+    <div class="tool-row">
+      <label for="searchInput" class="vh">Search logs</label>
+      <input id="searchInput" type="search" class="input" placeholder="Search girth, height or log no." autocomplete="off" enterkeyhint="search">
+      <button type="button" class="btn" id="filterToggle" aria-expanded="false" aria-controls="filterPanel"><i class="bi bi-funnel" aria-hidden="true"></i> Filter <span class="badge" id="filterBadge" hidden>0</span></button>
+    </div>
+    <div class="fpanel" id="filterPanel" hidden>
+      <div class="field"><label for="fScope">Show</label><select id="fScope" class="select"><option value="current">Current line</option><option value="all">All lines</option></select></div>
+      <div class="field"><label for="fField">Search in</label><select id="fField" class="select"><option value="any">Everything</option><option value="girth">Girth</option><option value="height">Height</option><option value="number">Log number</option></select></div>
+      <div class="field wide"><label for="sortSelect">Sort by</label><select id="sortSelect" class="select">
+        <option value="newest">Newest first</option><option value="oldest">Oldest first</option>
+        <option value="girth-asc">Girth: low to high</option><option value="girth-desc">Girth: high to low</option>
+        <option value="vol-asc">Volume: low to high</option><option value="vol-desc">Volume: high to low</option></select></div>
+      <label class="switch"><span>Pinned only</span><input type="checkbox" id="fPinned" role="switch"><span class="track" aria-hidden="true"></span></label>
+      <button type="button" class="btn btn-sm" id="filterClear">Clear filters</button>
+    </div>
+  </div>
+  <div class="results" id="resultsLine" hidden></div>
+  <ul class="rlist" id="logList" aria-label="Logs"></ul>
+  <div id="moreWrap" hidden><button type="button" class="btn btn-block" id="showMoreBtn">Show more</button></div>
+  <div class="card empty" id="logsEmpty"><i class="bi bi-tree" aria-hidden="true"></i><strong>No logs yet</strong>Start by selecting a height and entering the girth of your first log.<div><button type="button" class="btn btn-amber" id="emptyAddBtn"><i class="bi bi-plus-lg" aria-hidden="true"></i> Add first log</button></div></div>
+  <div class="card empty" id="logsNoMatch" hidden><i class="bi bi-search" aria-hidden="true"></i><strong>No logs match your filters</strong><button type="button" class="btn btn-sm" id="noMatchClear">Clear filters</button></div>
+</section>
+
+<!-- ============================ REPORTS ============================ -->
+<section id="view-reports" class="view" aria-label="Reports" hidden>
+  <article class="card">
+    <div class="eyebrow">Current load</div>
+    <div class="lc-name" id="rLoadName" style="margin-bottom:16px">No supplier yet</div>
+    <div class="export-list">
+      <button type="button" class="btn btn-primary btn-xl" id="exportPdfBtn"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> Generate PDF</button>
+      <div class="btn-row">
+        <button type="button" class="btn" id="previewPdfBtn"><i class="bi bi-eye" aria-hidden="true"></i> Preview</button>
+        <button type="button" class="btn" id="sharePdfBtn"><i class="bi bi-share" aria-hidden="true"></i> Share</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn" id="exportCsvBtn"><i class="bi bi-filetype-csv" aria-hidden="true"></i> CSV</button>
+        <button type="button" class="btn" id="printBtn"><i class="bi bi-printer" aria-hidden="true"></i> Print</button>
+      </div>
+    </div>
+    <p class="hint" style="margin-top:12px">The PDF lists each line under the line number you gave it. Shortcut: Ctrl/Cmd + E.</p>
+  </article>
+
+  <h3 class="section-h">Summary</h3>
+  <div class="stat-grid">
+    <div class="stat"><div class="k">Total logs</div><div class="v num" id="rCount">0</div></div>
+    <div class="stat primary"><div class="k">Total volume</div><div class="v num"><span id="rVolume">0.00</span> <small class="u-label">cu.ft</small></div></div>
+    <div class="stat"><div class="k">Total lines</div><div class="v num" id="rLines">0</div></div>
+    <div class="stat"><div class="k">Average girth</div><div class="v num"><span id="rAvg">0</span><small>"</small></div></div>
+    <div class="stat"><div class="k">Max girth</div><div class="v num"><span id="rMax">0</span><small>"</small></div></div>
+    <div class="stat"><div class="k">Min girth</div><div class="v num"><span id="rMin">0</span><small>"</small></div></div>
+  </div>
+  <article class="card">
+    <dl class="more-stats" style="margin:0">
+      <div><dt>Average volume per log</dt><dd id="rAvgVol">--</dd></div>
+      <div><dt>Largest log</dt><dd id="rLargest">--</dd></div>
+      <div><dt>Smallest log</dt><dd id="rSmallest">--</dd></div>
+      <div><dt>Average logs per line</dt><dd id="rLogsPerLine">--</dd></div>
+      <div><dt>Average volume per line</dt><dd id="rVolPerLine">--</dd></div>
+      <div><dt>Pinned logs</dt><dd id="rPinned">0</dd></div>
+    </dl>
+  </article>
+  <article class="card"><div class="sec-head"><h2>Volume by line</h2></div><div id="volByLine"></div></article>
+  <article class="card"><div class="sec-head"><h2>Girth distribution</h2></div><div id="chartBox"></div><p class="hint" style="margin-top:8px">Number of logs at each girth (inches, grouped by whole inch).</p></article>
+</section>
+
+<!-- ============================ SETTINGS ============================ -->
+<section id="view-settings" class="view" aria-label="Settings" hidden>
+  <h3 class="section-h">Appearance</h3>
+  <article class="card">
+    <div class="set-row"><div><div class="t">Theme</div><div class="d">System follows your phone</div></div>
+      <select id="setTheme" class="select" aria-label="Theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
+  </article>
+
+  <h3 class="section-h">Measuring</h3>
+  <article class="card">
+    <div class="set-row"><div><div class="t">Tap girth adds the log</div><div class="d">One tap per log. Off = tap fills the box, then ADD LOG</div></div>
+      <label class="switch"><input type="checkbox" id="setTapAdd" role="switch" aria-label="Tap girth adds the log"><span class="track" aria-hidden="true"></span></label></div>
+    <div style="padding:12px 0;border-bottom:1px solid var(--line)">
+      <label for="setQuick" class="t" style="font-weight:800;display:block">Quick girth values</label>
+      <div class="d hint" style="margin:2px 0 8px">Numbers or ranges, e.g. <b>16-45, 48, 50</b></div>
+      <div class="btn-row"><input id="setQuick" class="input" type="text" autocomplete="off" style="flex:1 1 180px"><button type="button" class="btn btn-sm" id="setQuickReset">Default</button></div>
+      <div class="err" id="setQuickErr"></div>
+    </div>
+    <div class="set-row"><div><div class="t">Confirm before deleting</div><div class="d">Undo is always available</div></div>
+      <label class="switch"><input type="checkbox" id="setConfirmDelete" role="switch" aria-label="Confirm before deleting"><span class="track" aria-hidden="true"></span></label></div>
+    <div class="set-row"><div><div class="t">Vibration and sound</div><div class="d">Short feedback when a log is added</div></div>
+      <label class="switch"><input type="checkbox" id="setFeedback" role="switch" aria-label="Vibration and sound"><span class="track" aria-hidden="true"></span></label></div>
+    <div class="set-row"><div><div class="t">Keep cursor in custom girth (desktop)</div><div class="d">Phones close the keyboard after adding</div></div>
+      <label class="switch"><input type="checkbox" id="setAutoFocus" role="switch" aria-label="Keep cursor in custom girth"><span class="track" aria-hidden="true"></span></label></div>
+    <div class="set-row"><div><div class="t">Show auto-save status</div><div class="d">“Data saved locally” on Home</div></div>
+      <label class="switch"><input type="checkbox" id="setSaveStatus" role="switch" aria-label="Show auto-save status"><span class="track" aria-hidden="true"></span></label></div>
+    <div class="set-row"><div><div class="t">Automatic app lock</div><div class="d">Lock the app after inactivity. Password is required to unlock.</div></div>
+      <select id="setAutoLock" class="select" aria-label="Automatic app lock"><option value="0">Off</option><option value="1">1 min</option><option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option></select></div>
+  </article>
+
+  <h3 class="section-h">Calculation display</h3>
+  <article class="card">
+    <div class="set-row"><div><div class="t">Volume unit shown</div><div class="d">Display only. Calculations stay in cu.ft</div></div>
+      <select id="setUnit" class="select" aria-label="Volume unit"><option value="cuft">cu.ft</option><option value="cum">cu.m</option></select></div>
+    <div class="set-row"><div><div class="t">Decimal places</div><div class="d">For volumes and averages</div></div>
+      <select id="setDecimals" class="select" aria-label="Decimal places"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
+    <p class="hint" style="margin-top:12px">Formula: volume = (girth ÷ 4)² ÷ 144 × length in feet, cut off (not rounded) at 2 decimals.</p>
+  </article>
+
+  <h3 class="section-h">Security</h3>
+  <article class="card security-card">
+    <div class="set-row"><div><div class="t">Account</div><div class="d" id="securityUsername">Signed-in account</div></div><span class="pill ok">Protected</span></div>
+    <div class="menu-list" style="margin-top:12px">
+      <button type="button" class="menu-btn" id="changePasswordBtn"><i class="bi bi-key" aria-hidden="true"></i><span>Change password<small>Update the local account password</small></span></button>
+      <button type="button" class="menu-btn danger" id="logoutBtn"><i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>Logout<small>Sign out of this device without deleting timber data</small></span></button>
+    </div>
+    <p class="hint" style="margin-top:12px">This is a local-device account. Timber data, history and settings are encrypted with AES-GCM while stored locally. Your password is required to unlock the data. This is still not a replacement for server-side authentication.</p>
+  </article>
+
+  <h3 class="section-h">Data</h3>
+  <article class="card">
+    <p class="hint" style="margin-bottom:12px">Your work saves automatically on this phone. Download a backup before clearing browser data or changing phones.</p>
+    <div class="menu-list">
+      <button type="button" class="menu-btn" id="exportJsonBtn"><i class="bi bi-box-arrow-down" aria-hidden="true"></i><span>Export current load (JSON)</span></button>
+      <button type="button" class="menu-btn" id="backupBtn"><i class="bi bi-shield-check" aria-hidden="true"></i><span>Download full backup<small>Load, history and settings</small></span></button>
+      <button type="button" class="menu-btn" id="importBtn"><i class="bi bi-box-arrow-in-up" aria-hidden="true"></i><span>Import data</span></button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+      <button type="button" class="menu-btn danger" id="clearDataBtn"><i class="bi bi-exclamation-octagon" aria-hidden="true"></i><span>Clear all data</span></button>
+    </div>
+  </article>
+
+  <h3 class="section-h">About</h3>
+  <article class="card">
+    <dl class="kvl">
+      <div><dt>Application</dt><dd>Timber Logs Manager</dd></div>
+      <div><dt>Version</dt><dd id="appVersion"></dd></div>
+      <div><dt>Business</dt><dd id="aboutCompany"></dd></div>
+      <div><dt>Storage</dt><dd>This device only</dd></div>
+    </dl>
+    <button type="button" class="btn btn-sm" id="setDefaults" style="margin-top:16px">Restore default settings</button>
+  </article>
+</section>
+
+</main>
+</div>
+
+<div class="mini-bar num" id="miniBar" hidden aria-hidden="true"><span id="miniHeight">--</span><span id="miniLine"></span><span id="miniVol"></span></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<!-- ============================ SHEETS ============================ -->
+
+<!-- Change height -->
+<dialog id="heightSheet" class="sheet" aria-labelledby="hsTitle">
+  <div class="sheet-in">
+    <div class="grab" aria-hidden="true"></div>
+    <h3 id="hsTitle">Change height</h3>
+    <p class="sub">New logs use this height. Existing logs keep their own height.</p>
+    <div class="label" style="margin-bottom:8px">Feet</div>
+    <div class="chip-grid" id="hsFeet" role="group" aria-label="Feet"></div>
+    <div class="label" style="margin:16px 0 8px">Inches</div>
+    <div class="chip-grid" id="hsInches" role="group" aria-label="Inches"></div>
+    <div class="h-selected"><span class="label">Selected</span><strong class="num" id="hsSelected">--</strong></div>
+    <div class="err" id="hsErr" role="alert"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-outline" id="hsClear">Clear height</button>
+      <button type="button" class="btn btn-primary" id="hsApply"><i class="bi bi-check2" aria-hidden="true"></i> Apply height</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Edit log -->
+<dialog id="editSheet" class="sheet" aria-labelledby="editTitle">
+  <form id="editForm" class="sheet-in" novalidate>
+    <div class="grab" aria-hidden="true"></div>
+    <h3 id="editTitle">Edit log <span id="editNum"></span></h3>
+    <p class="sub" id="editSub">Changes apply to this log only.</p>
+    <div class="edit-row">
+      <div class="field"><label for="editFeet">Height: feet</label><input id="editFeet" class="input" type="number" inputmode="numeric" min="1" max="99" step="1" aria-describedby="editFeetErr"><div class="err" id="editFeetErr"></div></div>
+      <div class="field"><label for="editInches">Height: inches</label><input id="editInches" class="input" type="number" inputmode="numeric" min="0" max="11" step="1" aria-describedby="editInchesErr"><div class="err" id="editInchesErr"></div></div>
+    </div>
+    <div class="field"><label for="editGirth">Girth (inches)</label><input id="editGirth" class="input" type="number" inputmode="decimal" min="0" step="any" aria-describedby="editGirthErr"><div class="err" id="editGirthErr"></div></div>
+    <div class="vol-preview" aria-live="polite"><span class="label">Calculated volume</span><strong class="num"><span id="editVolume">--</span> <span class="u-label">cu.ft</span></strong></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-outline" id="editCancel">Cancel</button>
+      <button type="submit" class="btn btn-primary">Save changes</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Load details (supplier) -->
+<dialog id="loadSheet" class="sheet" aria-labelledby="loadSheetTitle">
+  <form id="loadForm" class="sheet-in" novalidate autocomplete="off">
+    <div class="grab" aria-hidden="true"></div>
+    <h3 id="loadSheetTitle">Load details</h3>
+    <p class="sub">Supplier, vehicle and driver appear on the PDF.</p>
+    <div class="field"><label for="supplierName">Supplier name <span class="req" aria-hidden="true">*</span></label><input id="supplierName" class="input" type="text" maxlength="60" required aria-required="true" aria-describedby="supplierNameErr" placeholder="e.g. ABC Timber Traders"><div class="err" id="supplierNameErr"></div></div>
+    <div class="field"><label for="vehicleNumber">Vehicle number <span class="req" aria-hidden="true">*</span></label><input id="vehicleNumber" class="input" type="text" maxlength="20" required aria-required="true" aria-describedby="vehicleNumberErr" placeholder="e.g. JK01AB1234" autocapitalize="characters"><div class="err" id="vehicleNumberErr"></div></div>
+    <div class="field"><label for="driverName">Driver name <span class="req" aria-hidden="true">*</span></label><input id="driverName" class="input" type="text" maxlength="60" required aria-required="true" aria-describedby="driverNameErr" placeholder="Driver's full name"><div class="err" id="driverNameErr"></div></div>
+    <div class="field"><label for="logType">Log type <span class="hint">(optional)</span></label><select id="logType" class="select"><option value="">Select log type</option><option>Fras</option><option>Brran</option><option>Yedd</option></select></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-outline" id="loadCancel">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="saveSupplierBtn"><i class="bi bi-check2-circle" aria-hidden="true"></i> Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Action sheet (log actions, load actions, measure menu) -->
+<dialog id="actionSheet" class="sheet" aria-labelledby="actTitleS">
+  <div class="sheet-in">
+    <div class="grab" aria-hidden="true"></div>
+    <div class="act-title" id="actTitleS">Actions</div>
+    <p class="sub" id="actSub"></p>
+    <div class="menu-list" id="actList"></div>
+    <button type="button" class="btn btn-outline btn-block" id="actCancel" style="margin-top:12px">Cancel</button>
+  </div>
+</dialog>
+
+<!-- Line number -->
+<dialog id="lineSheet" class="sheet" aria-labelledby="lineTitle">
+  <form id="lineForm" class="sheet-in" novalidate>
+    <div class="grab" aria-hidden="true"></div>
+    <h3 id="lineTitle">Line number</h3>
+    <p class="sub" id="lineSub"></p>
+    <div class="field"><label for="lineInput" id="lineLabel">Line number</label>
+      <input id="lineInput" class="input" type="text" maxlength="12" autocomplete="off" aria-describedby="lineErr" style="font-size:1.6rem;font-weight:800">
+      <div class="err" id="lineErr"></div></div>
+    <p class="hint">Use any number or short label, like 7 or 7A. It appears on screen, in the PDF and in exports.</p>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-outline" id="lineCancel">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="lineOk">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Line detail -->
+<dialog id="lineDetailSheet" class="sheet" aria-labelledby="ldTitle">
+  <div class="sheet-in">
+    <div class="grab" aria-hidden="true"></div>
+    <div class="line-top"><h3 id="ldTitle">Line</h3><span class="pill ok" id="ldPill">Completed</span></div>
+    <p class="sub" id="ldSub"></p>
+    <div class="lm" id="ldMetrics" style="margin-bottom:16px"></div>
+    <div class="btn-row" style="margin-bottom:16px">
+      <button type="button" class="btn btn-sm" id="ldRename"><i class="bi bi-pencil" aria-hidden="true"></i> Line no.</button>
+      <button type="button" class="btn btn-sm" id="ldReopen"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Reopen line</button>
+    </div>
+    <ul class="rlist" id="ldList" aria-label="Logs in this line"></ul>
+    <div class="sheet-actions"><button type="button" class="btn btn-primary" data-close>Close</button></div>
+  </div>
+</dialog>
+
+<!-- Load info -->
+<dialog id="infoSheet" class="sheet" aria-labelledby="infoTitle">
+  <div class="sheet-in">
+    <div class="grab" aria-hidden="true"></div>
+    <h3 id="infoTitle">Load information</h3>
+    <p class="sub">One load is one supplier and vehicle.</p>
+    <dl class="kvl" id="infoList"></dl>
+    <div class="sheet-actions"><button type="button" class="btn btn-primary" data-close>Close</button></div>
+  </div>
+</dialog>
+
+<!-- Confirm -->
+<dialog id="confirmDlg" class="sheet" aria-labelledby="confirmTitle" aria-describedby="confirmMsg">
+  <form method="dialog" class="sheet-in">
+    <div class="grab" aria-hidden="true"></div>
+    <h3 id="confirmTitle">Are you sure?</h3>
+    <p class="sub" id="confirmMsg" style="margin-bottom:0"></p>
+    <div id="confirmTypeWrap" class="field" style="margin-top:16px" hidden>
+      <label for="confirmType">Type <strong id="confirmWord">RESET</strong> to continue</label>
+      <input id="confirmType" class="input" type="text" autocomplete="off">
+    </div>
+    <div class="sheet-actions">
+      <button type="submit" value="cancel" class="btn btn-outline" id="confirmCancel">Cancel</button>
+      <button type="submit" value="ok" class="btn btn-primary" id="confirmOk">Confirm</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Continue previous load -->
+<dialog id="contDlg" class="sheet" aria-labelledby="contTitle">
+  <div class="sheet-in">
+    <div class="grab" aria-hidden="true"></div>
+    <h3 id="contTitle">Continue your previous session?</h3>
+    <p class="sub" id="contText"></p>
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-outline" id="contNew">Start new</button>
+      <button type="button" class="btn btn-primary" id="contContinue">Continue</button>
+    </div>
+  </div>
+</dialog>
+
+<div id="printSheet" aria-hidden="true"></div>
+</div><!-- /appRoot -->
+
+<!-- ============================ AUTHENTICATION ============================ -->
+<section id="authScreen" class="auth-screen" aria-label="Authentication" hidden>
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="auth-logo" aria-hidden="true">🪵</div>
+      <h1>Timber Logs Manager</h1>
+      <p id="authSubtitle">Secure sign in</p>
+    </div>
+
+    <form id="authForm" class="auth-form" novalidate autocomplete="on">
+      <div class="field" id="authUsernameField">
+        <label for="authUsername">Username / Email</label>
+        <input id="authUsername" class="input" type="text" maxlength="120" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      </div>
+      <div class="field" id="authPasswordField">
+        <label for="authPassword">Password</label>
+        <div class="auth-password">
+          <input id="authPassword" class="input" type="password" minlength="8" maxlength="128" autocomplete="current-password" required>
+          <button type="button" class="auth-toggle" id="authTogglePassword" aria-label="Show password"><i class="bi bi-eye" aria-hidden="true"></i></button>
+        </div>
+      </div>
+      <div class="field" id="authConfirmField" hidden>
+        <label for="authConfirmPassword">Confirm Password</label>
+        <div class="auth-password">
+          <input id="authConfirmPassword" class="input" type="password" minlength="8" maxlength="128" autocomplete="new-password">
+          <button type="button" class="auth-toggle" id="authToggleConfirm" aria-label="Show password"><i class="bi bi-eye" aria-hidden="true"></i></button>
+        </div>
+      </div>
+      <div class="auth-error" id="authError" role="alert" aria-live="polite"></div>
+      <div class="auth-options" id="authOptions">
+        <label class="auth-check"><input type="checkbox" id="authRemember"> <span>Remember me</span></label>
+      </div>
+      <button type="submit" class="btn btn-primary btn-xl" id="authSubmit">LOGIN</button>
+    </form>
+    <div class="auth-note" id="authNote">Your password is stored only as a salted PBKDF2-SHA-256 verifier. It is never stored as plain text.</div>
+    <div class="auth-meta">Local account · This device</div>
+  </div>
+</section>
+
+<script>
+(function () {
+'use strict';
+
+/* ============================================================
+   CONSTANTS AND HELPERS
+   ============================================================ */
+var $ = function (id) { return document.getElementById(id); };
+var APP_VERSION = '3.2.0';
+
+// Business details printed on the PDF / paper copy. Edit here if they change.
+var COMPANY = {
+  name: 'Bhat Wood and Timber Suppliers',
+  proprietor: 'Prop. Mukhtar Ahmad Bhat',
+  contact: 'Contact: 9596663402',
+  address: 'Banimullah Kulgam, J&K',
+  signatory: 'Mukhtar Ahmad Bhat'
+};
+var KEYS = {      // same storage keys as the previous versions, so saved work carries over
+  auth: 'timberLogsManager.auth.v1',
+  authSession: 'timberLogsManager.auth.session.v1',
+  state: 'timberLogsManager.state.v1',
+  settings: 'timberLogsManager.settings.v1',
+  sessions: 'timberLogsManager.sessions.v1',
+  theme: 'timberLogsManager.theme'
+};
+var DEFAULT_QUICK = '16-45';
+var PRESETS = [{ feet: 1, inches: 9 }, { feet: 2, inches: 6 }, { feet: 2, inches: 9 }, { feet: 3, inches: 3 }, { feet: 3, inches: 6 }, { feet: 4, inches: 3 }];
+var UNITS = { cuft: { label: 'cu.ft', factor: 1 }, cum: { label: 'cu.m', factor: 0.028316846592 } };
+var MAX_GIRTH = 500, MAX_FEET = 99, MAX_SESSIONS = 50, MAX_ACTIVITY = 100, PAGE_SIZE = 100;
+var DEFAULT_SETTINGS = {
+  decimals: 2, unit: 'cuft', quickGirths: DEFAULT_QUICK, confirmDelete: true, feedback: false,
+  autoFocus: true, tapAdd: true, showSaveStatus: true, autoLockMinutes: 0, recentHeights: []
+};
+
+function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function str(v) { return typeof v === 'string' ? v : ''; }
+function pad2(n) { return String(n).padStart(2, '0'); }
+function nowISO() { return new Date().toISOString(); }
+function localDate(iso) {
+  var d = iso ? new Date(iso) : new Date(); if (isNaN(d)) d = new Date();
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+function shortTime(iso) { var d = new Date(iso); return isNaN(d) ? '' : pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+function longDateTime(iso) { var d = new Date(iso); return isNaN(d) ? '--' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + shortTime(iso); }
+function formatHeight(f, i) { return f + "' " + i + '"'; }
+
+/* ============================================================
+   CALC: business-critical volume formula (UNCHANGED from the original)
+   Quarter-girth formula, truncated (not rounded) to 2 decimals,
+   with a floating-point guard. The UI only ever calls this function.
+   ============================================================ */
+var Calc = {
+  volume: function (g, f, i) {
+    let ht = f + i / 12;
+    let q = g / 4;
+    return Math.floor((((q * q) / 144) * ht + 1e-9) * 100) / 100;
+  }
+};
+var calculateVolume = Calc.volume;
+
+/* ============================================================
+   STORE: safe localStorage wrapper
+   ============================================================ */
+var VAULT_ENCRYPTED_KEYS = {};
+VAULT_ENCRYPTED_KEYS[KEYS.state] = true;
+VAULT_ENCRYPTED_KEYS[KEYS.settings] = true;
+VAULT_ENCRYPTED_KEYS[KEYS.sessions] = true;
+VAULT_ENCRYPTED_KEYS[KEYS.theme] = true;
+var vault = { key: null, unlocked: false, pending: new Set(), timer: null };
+
+function rawRead(key, fb) { try { var r = localStorage.getItem(key); return r == null ? fb : JSON.parse(r); } catch (e) { return fb; } }
+function rawWrite(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return false; } }
+function rawRemove(key) { try { localStorage.removeItem(key); } catch (e) {} }
+function cloneValue(v) { try { return JSON.parse(JSON.stringify(v)); } catch (e) { return v; } }
+function randomBytes(length) {
+  if (!window.crypto || !window.crypto.getRandomValues) throw new Error('Secure random number generation is not available in this browser.');
+  var out = new Uint8Array(length);
+  window.crypto.getRandomValues(out);
+  return out;
+}
+function bytesToB64(bytes) {
+  var binary = '';
+  var chunk = 0x8000;
+  for (var i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+  }
+  return btoa(binary);
+}
+function b64ToBytes(b64) {
+  var binary = atob(b64);
+  var out = new Uint8Array(binary.length);
+  for (var i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+/*
+ * Local encrypted vault.
+ * Sensitive application data is encrypted with AES-GCM. The AES key is derived
+ * from the account password using PBKDF2-SHA-256. The key exists only in memory
+ * while the app is unlocked. This remains local-only security: the HTML itself
+ * can still be modified by someone who controls the device.
+ */
+var Store = {
+  read: function (key, fb) {
+    if (VAULT_ENCRYPTED_KEYS[key]) {
+      if (vault.cache && Object.prototype.hasOwnProperty.call(vault.cache, key)) return vault.cache[key];
+      return fb;
+    }
+    return rawRead(key, fb);
+  },
+  write: function (key, val) {
+    if (VAULT_ENCRYPTED_KEYS[key]) {
+      if (!vault.unlocked || !vault.key) return false;
+      if (!vault.cache) vault.cache = {};
+      vault.cache[key] = cloneValue(val);
+      queueVaultWrite(key);
+      return true;
+    }
+    return rawWrite(key, val);
+  },
+  remove: function (key) {
+    if (VAULT_ENCRYPTED_KEYS[key]) {
+      if (vault.cache) delete vault.cache[key];
+      rawRemove(key);
+      return;
+    }
+    rawRemove(key);
+  }
+};
+
+function abToB64(buf) { return bytesToB64(new Uint8Array(buf)); }
+async function derivePasswordKey(password, saltB64) {
+  if (!window.crypto || !window.crypto.subtle) throw new Error('Secure encryption requires a modern browser with Web Crypto support.');
+  var material = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name:'PBKDF2', salt:b64ToBytes(saltB64), iterations:AUTH_ITERATIONS, hash:'SHA-256' }, material, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']);
+}
+async function encryptVaultValue(value) {
+  var iv = randomBytes(12), plain = new TextEncoder().encode(JSON.stringify(value));
+  var cipher = await crypto.subtle.encrypt({ name:'AES-GCM', iv:iv }, vault.key, plain);
+  return { version:1, iv:bytesToB64(iv), ciphertext:abToB64(cipher) };
+}
+async function decryptVaultValue(record) {
+  var plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv:b64ToBytes(record.iv) }, vault.key, b64ToBytes(record.ciphertext));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+async function persistVaultKey(key) {
+  if (!vault.unlocked || !vault.key || !vault.cache || !Object.prototype.hasOwnProperty.call(vault.cache, key)) return false;
+  try { rawWrite(key, await encryptVaultValue(vault.cache[key])); return true; } catch (e) { return false; }
+}
+function queueVaultWrite(key) {
+  vault.pending.add(key);
+  clearTimeout(vault.flushTimer);
+  vault.flushTimer = setTimeout(function () { flushVaultWrites(); }, 80);
+}
+async function flushVaultWrites() {
+  clearTimeout(vault.flushTimer); vault.flushTimer = null;
+  var keys = Array.from(vault.pending); vault.pending.clear();
+  for (var i = 0; i < keys.length; i++) await persistVaultKey(keys[i]);
+}
+async function unlockVault(password) {
+  var rec = authRecord(); if (!rec || !rec.vaultSalt) throw new Error('Encrypted vault is not configured for this account.');
+  var key = await derivePasswordKey(password, rec.vaultSalt), cache = {};
+  vault.key = key; vault.unlocked = true; vault.cache = cache;
+  try {
+    var encryptedKeys = Object.keys(VAULT_ENCRYPTED_KEYS);
+    for (var i = 0; i < encryptedKeys.length; i++) {
+      var storageKey = encryptedKeys[i], raw = rawRead(storageKey, null);
+      if (raw == null) continue;
+      if (raw && raw.version === 1 && raw.iv && raw.ciphertext) cache[storageKey] = await decryptVaultValue(raw);
+      else {
+        // One-time migration from the previous unencrypted localStorage format.
+        // The migration writes the encrypted record back to the same localStorage key.
+        // Do not remove it afterward: rawWrite() has already replaced the legacy value.
+        cache[storageKey] = raw;
+        var migrated = await persistVaultKey(storageKey);
+        if (!migrated) throw new Error('Unable to encrypt existing local data during migration.');
+      }
+    }
+    return true;
+  } catch (e) {
+    lockVault();
+    throw new Error('Unable to unlock encrypted timber data. The password may be incorrect or the saved data may be damaged.');
+  }
+}
+async function lockVault() {
+  await flushVaultWrites();
+  vault.key = null; vault.unlocked = false; vault.cache = {};
+  clearTimeout(vault.flushTimer); vault.flushTimer = null; vault.pending.clear();
+}
+async function reencryptVault() {
+  if (!vault.unlocked) return;
+  await flushVaultWrites();
+  var keys = Object.keys(VAULT_ENCRYPTED_KEYS);
+  for (var i = 0; i < keys.length; i++) if (vault.cache && Object.prototype.hasOwnProperty.call(vault.cache, keys[i])) await persistVaultKey(keys[i]);
+}
+
+/* ============================================================
+   BASIC LOCAL AUTHENTICATION
+   Passwords are verified with PBKDF2-SHA-256. No plain-text password
+   is persisted. This is intentionally local-only because this app has
+   no backend identity provider.
+   ============================================================ */
+var AUTH_ITERATIONS = 150000, AUTH_MAX_ATTEMPTS = 5, AUTH_LOCK_MS = 30000;
+var authState = { mode: 'login', remember: false, busy: false };
+
+function authRecord() { return Store.read(KEYS.auth, null); }
+function authSession() {
+  var s = Store.read(KEYS.authSession, null);
+  if (s && s.token && s.expiresAt > Date.now()) return s;
+  try {
+    var ss = sessionStorage.getItem(KEYS.authSession);
+    if (ss) { var parsed = JSON.parse(ss); if (parsed && parsed.token && parsed.expiresAt > Date.now()) return parsed; }
+  } catch (e) {}
+  return null;
+}
+function clearAuthSession() {
+  Store.remove(KEYS.authSession);
+  try { sessionStorage.removeItem(KEYS.authSession); } catch (e) {}
+}
+function setAuthSession(remember) {
+  var value = { token: bytesToB64(randomBytes(32)), createdAt: nowISO(), expiresAt: Date.now() + (remember ? 2592000000 : 43200000), remember: !!remember };
+  clearAuthSession();
+  if (remember) Store.write(KEYS.authSession, value);
+  else { try { sessionStorage.setItem(KEYS.authSession, JSON.stringify(value)); } catch (e) {} }
+  return value;
+}
+async function deriveAuthVerifier(password, saltB64) {
+  if (!window.crypto || !window.crypto.subtle) throw new Error('Secure authentication requires a modern browser with Web Crypto support.');
+  var enc = new TextEncoder();
+  var keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
+  var bits = await crypto.subtle.deriveBits({ name:'PBKDF2', salt:b64ToBytes(saltB64), iterations:AUTH_ITERATIONS, hash:'SHA-256' }, keyMaterial, 256);
+  return bytesToB64(new Uint8Array(bits));
+}
+function timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  var diff = 0; for (var i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+function validUsername(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) || /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/.test(v); }
+function passwordError(v) {
+  if (v.length < 8) return 'Password must be at least 8 characters.';
+  if (!/[A-Z]/.test(v) || !/[a-z]/.test(v) || !/[0-9]/.test(v)) return 'Use at least one uppercase letter, one lowercase letter and one number.';
+  return '';
+}
+function setAuthError(msg) { $('authError').textContent = msg || ''; }
+function setAuthMode(mode) {
+  authState.mode = mode;
+  var setup = mode === 'setup';
+  $('authSubtitle').textContent = setup ? 'Create your local account' : 'Sign in to continue';
+  $('authSubmit').textContent = setup ? 'CREATE ACCOUNT' : 'LOGIN';
+  $('authConfirmField').hidden = !setup;
+  $('authOptions').hidden = setup;
+  $('authPassword').autocomplete = setup ? 'new-password' : 'current-password';
+  $('authNote').textContent = setup
+    ? 'Use at least 8 characters with uppercase, lowercase and a number. Your password is stored only as a salted PBKDF2-SHA-256 verifier.'
+    : 'Your password is verified locally and also unlocks AES-GCM encrypted timber data. The password itself is never stored.';
+  $('authUsername').value = setup ? '' : ((authRecord() || {}).username || '');
+  $('authPassword').value = ''; $('authConfirmPassword').value = ''; setAuthError('');
+  $('authPassword').classList.remove('is-invalid'); $('authUsername').classList.remove('is-invalid'); $('authConfirmPassword').classList.remove('is-invalid');
+  $('authUsername').disabled = !setup;
+}
+function showAuth(mode) {
+  setAuthMode(mode || (authRecord() ? 'login' : 'setup'));
+  $('authScreen').hidden = false; document.body.classList.add('auth-locked');
+  try { location.hash = ''; } catch (e) {}
+  setTimeout(function () { $(authState.mode === 'setup' ? 'authUsername' : 'authPassword').focus(); }, 40);
+}
+function hideAuth() { $('authScreen').hidden = true; document.body.classList.remove('auth-locked'); }
+function authBusy(on) {
+  authState.busy = on; var b = $('authSubmit'); b.disabled = on; b.classList.toggle('busy', on);
+  b.innerHTML = on ? '<span class="spinner" aria-hidden="true"></span> ' + (authState.mode === 'setup' ? 'Creating account...' : 'Logging in...') : (authState.mode === 'setup' ? 'CREATE ACCOUNT' : 'LOGIN');
+}
+async function createLocalAccount(username, password) {
+  var salt = randomBytes(16), saltB64 = bytesToB64(salt), verifier = await deriveAuthVerifier(password, saltB64);
+  var vaultSalt = bytesToB64(randomBytes(16));
+  Store.write(KEYS.auth, { version:2, username:username, salt:saltB64, verifier:verifier, iterations:AUTH_ITERATIONS, vaultSalt:vaultSalt, failedAttempts:0, lockedUntil:0, createdAt:nowISO(), updatedAt:nowISO() });
+}
+async function submitAuth(e) {
+  e.preventDefault(); if (authState.busy) return;
+  var username = $('authUsername').value.trim(), password = $('authPassword').value, confirm = $('authConfirmPassword').value;
+  setAuthError('');
+  if (!username || !password) { setAuthError('Please enter your username and password.'); return; }
+  var rec = authRecord();
+  if (authState.mode === 'setup') {
+    var pErr = passwordError(password);
+    if (!validUsername(username)) { setAuthError('Enter a valid username or email address.'); return; }
+    if (pErr) { setAuthError(pErr); return; }
+    if (password !== confirm) { setAuthError('Passwords do not match.'); $('authConfirmPassword').classList.add('is-invalid'); return; }
+    authBusy(true);
+    try {
+      await createLocalAccount(username, password); await unlockVault(password); setAuthSession($('authRemember').checked); hideAuth(); await startApp();
+    } catch (err) { setAuthError(err.message || 'Unable to create the account. Please try again.'); }
+    finally { authBusy(false); }
+    return;
+  }
+  if (!rec) { setAuthMode('setup'); return; }
+  if (rec.lockedUntil && rec.lockedUntil > Date.now()) {
+    setAuthError('Too many failed attempts. Please wait ' + Math.ceil((rec.lockedUntil - Date.now()) / 1000) + ' seconds.');
+    return;
+  }
+  authBusy(true);
+  try {
+    var verifier = await deriveAuthVerifier(password, rec.salt);
+    var usernameMatch = username.toLowerCase() === String(rec.username || '').toLowerCase();
+    if (!usernameMatch || !timingSafeEqual(verifier, rec.verifier)) {
+      rec.failedAttempts = (rec.failedAttempts || 0) + 1;
+      if (rec.failedAttempts >= AUTH_MAX_ATTEMPTS) { rec.failedAttempts = 0; rec.lockedUntil = Date.now() + AUTH_LOCK_MS; }
+      Store.write(KEYS.auth, rec);
+      setAuthError('Invalid username or password.');
+      $('authPassword').select();
+      return;
+    }
+    rec.failedAttempts = 0; rec.lockedUntil = 0;
+    if (!rec.vaultSalt) rec.vaultSalt = bytesToB64(randomBytes(16));
+    Store.write(KEYS.auth, rec);
+    await unlockVault(password);
+    setAuthSession($('authRemember').checked); hideAuth(); await startApp();
+  } catch (err) { setAuthError(err.message || 'Unable to sign in. Please try again.'); }
+  finally { authBusy(false); }
+}
+function togglePassword(id, btnId) {
+  var input = $(id), btn = $(btnId), show = input.type === 'password'; input.type = show ? 'text' : 'password';
+  btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  btn.innerHTML = '<i class="bi bi-' + (show ? 'eye-slash' : 'eye') + '" aria-hidden="true"></i>';
+}
+function securityInfo() {
+  var r = authRecord(), s = authSession();
+  return { username: r ? r.username : '--', signedIn: !!s };
+}
+async function changeLocalPassword() {
+  var r = authRecord(); if (!r) { showAuth('setup'); return; }
+  var current = prompt('Enter your current password:'); if (current === null) return;
+  var next = prompt('Enter your new password (8+ chars, upper/lowercase and number):'); if (next === null) return;
+  var confirm = prompt('Confirm your new password:'); if (confirm === null) return;
+  if (next !== confirm) { toast('Passwords do not match.', 'error'); return; }
+  var pe = passwordError(next); if (pe) { toast(pe, 'error'); return; }
+  try {
+    var currentVerifier = await deriveAuthVerifier(current, r.salt);
+    if (!timingSafeEqual(currentVerifier, r.verifier)) { toast('Current password is incorrect.', 'error'); return; }
+    var salt = bytesToB64(randomBytes(16)), verifier = await deriveAuthVerifier(next, salt);
+    r.salt = salt; r.verifier = verifier; r.iterations = AUTH_ITERATIONS; r.vaultSalt = bytesToB64(randomBytes(16)); r.updatedAt = nowISO(); r.failedAttempts = 0; r.lockedUntil = 0;
+    // Derive the new vault key before replacing the auth record so all local data can be re-encrypted.
+    vault.key = await derivePasswordKey(next, r.vaultSalt);
+    vault.unlocked = true;
+    Store.write(KEYS.auth, r);
+    await reencryptVault();
+    toast('Password changed successfully. Your local timber data was re-encrypted.', 'success');
+  } catch (e) { toast(e.message || 'Unable to change password.', 'error'); }
+}
+function resetAutoLockTimer() {
+  clearTimeout(vault.timer); vault.timer = null;
+  var mins = Number(settings && settings.autoLockMinutes || 0);
+  if (!mins || !authSession() || !vault.unlocked) return;
+  vault.timer = setTimeout(function () { lockForInactivity(); }, mins * 60000);
+}
+async function lockForInactivity() {
+  if (!authSession() || !vault.unlocked) return;
+  await lockVault();
+  clearAuthSession();
+  showAuth('login');
+  setAuthError('The app was locked because of inactivity. Please sign in again.');
+}
+async function logout() {
+  await lockVault();
+  clearAuthSession();
+  showAuth('login');
+  toast('You have been logged out.', 'info');
+}
+
+async function startApp() {
+  // The existing application initialization remains unchanged after authentication.
+  init();
+  resetAutoLockTimer();
+}
+
+/* ============================================================
+   TOASTS, FEEDBACK, CONFIRM, SHEETS
+   ============================================================ */
+function toast(message, type, opts) {
+  type = type || 'success'; opts = opts || {};
+  var duration = opts.duration || ((type === 'warn' || type === 'error') ? 4200 : 2600), box = $('toasts');
+  if (opts.key) box.querySelectorAll('[data-key="' + opts.key + '"]').forEach(function (n) { n.remove(); });
+  var t = document.createElement('div'); t.className = 'toast ' + type; if (opts.key) t.dataset.key = opts.key;
+  var icon = { success: 'check-circle-fill', warn: 'exclamation-triangle-fill', error: 'x-circle-fill', info: 'info-circle-fill' }[type] || 'info-circle-fill';
+  t.innerHTML = '<i class="bi bi-' + icon + '" aria-hidden="true"></i><span class="m"></span>';
+  t.querySelector('.m').textContent = message;
+  if (opts.action) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'act'; b.textContent = opts.action.label;
+    b.addEventListener('click', function () { t.remove(); opts.action.onClick(); }); t.appendChild(b);
+  }
+  box.appendChild(t); while (box.children.length > 3) box.firstChild.remove();
+  setTimeout(function () { t.remove(); }, duration);
+}
+var audioCtx = null;
+function feedbackTick(kind) {
+  if (!settings.feedback) return;
+  try { if (navigator.vibrate) navigator.vibrate(kind === 'ok' ? 15 : [30, 40, 30]); } catch (e) {}
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    audioCtx = audioCtx || new AC();
+    var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = kind === 'ok' ? 880 : 220; g.gain.value = 0.04;
+    o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.07);
+  } catch (e) {}
+}
+function confirmDialog(opts) {
+  return new Promise(function (resolve) {
+    var dlg = $('confirmDlg'), ok = $('confirmOk'), ti = $('confirmType');
+    $('confirmTitle').textContent = opts.title || 'Are you sure?';
+    $('confirmMsg').textContent = opts.message || '';
+    ok.textContent = opts.confirmText || 'Confirm';
+    ok.className = 'btn ' + (opts.danger ? 'btn-danger' : 'btn-primary');
+    if (opts.requireText) {
+      $('confirmWord').textContent = opts.requireText; $('confirmTypeWrap').hidden = false; ti.value = ''; ok.disabled = true;
+      ti.oninput = function () { ok.disabled = ti.value.trim() !== opts.requireText; };
+      ti.onkeydown = function (e) { if (e.key === 'Enter') e.preventDefault(); };
+    } else { $('confirmTypeWrap').hidden = true; ok.disabled = false; ti.oninput = null; }
+    dlg.returnValue = '';
+    dlg.addEventListener('close', function () { resolve(dlg.returnValue === 'ok'); }, { once: true });
+    dlg.showModal();
+    (opts.requireText ? ti : $('confirmCancel')).focus();
+  });
+}
+/* Generic action sheet: items = [{label, icon, danger, hint, onClick}] */
+function openActions(title, sub, items) {
+  $('actTitleS').textContent = title; $('actSub').textContent = sub || '';
+  var list = $('actList'); list.innerHTML = '';
+  items.forEach(function (it) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'menu-btn' + (it.danger ? ' danger' : '');
+    b.innerHTML = '<i class="bi bi-' + it.icon + '" aria-hidden="true"></i><span>' + esc(it.label) + (it.hint ? '<small>' + esc(it.hint) + '</small>' : '') + '</span>';
+    b.addEventListener('click', function () { $('actionSheet').close(); setTimeout(it.onClick, 0); });
+    list.appendChild(b);
+  });
+  $('actionSheet').showModal();
+}
+
+/* ============================================================
+   STATE
+   ============================================================ */
+var settings = sanitizeSettings(Store.read(KEYS.settings, {}));
+var session;                       // the current load
+var deletedStack = [];             // recently deleted logs, for Undo
+var ui = {
+  view: 'home', logsFrom: 'measure', loadsTab: 'current', flashId: null, typedGirth: false,
+  scope: 'current', sort: 'newest', filter: { field: 'any', q: '', pinned: false }, logLimit: PAGE_SIZE,
+  detailLineId: null, hSel: { feet: null, inches: 0 }, saveOk: true, lastSaved: null, lastTap: {}
+};
+var quickValues = [], editingId = null, lineCfg = null, hdrObserver = null;
+
+function sanitizeSettings(raw) {
+  raw = raw && typeof raw === 'object' ? raw : {};
+  var s = Object.assign({}, DEFAULT_SETTINGS, raw);
+  s.decimals = [1, 2, 3].indexOf(Number(s.decimals)) >= 0 ? Number(s.decimals) : 2;
+  s.unit = UNITS[s.unit] ? s.unit : 'cuft';
+  s.autoLockMinutes = [0, 1, 5, 15, 30].indexOf(Number(s.autoLockMinutes)) >= 0 ? Number(s.autoLockMinutes) : 0;
+  s.quickGirths = typeof s.quickGirths === 'string' && s.quickGirths.trim() ? s.quickGirths : DEFAULT_QUICK;
+  ['confirmDelete', 'feedback', 'autoFocus', 'tapAdd', 'showSaveStatus'].forEach(function (k) { s[k] = !!s[k]; });
+  s.recentHeights = (Array.isArray(s.recentHeights) ? s.recentHeights : []).filter(function (h) {
+    return h && Number.isInteger(h.feet) && h.feet >= 1 && h.feet <= 30 && Number.isInteger(h.inches) && h.inches >= 0 && h.inches <= 11;
+  }).slice(0, 5);
+  return s;
+}
+function newLine(number) { return { id: uid(), number: String(number), createdAt: nowISO(), completedAt: null, logs: [] }; }
+function newSession() {
+  var s = { id: uid(), createdAt: nowISO(), supplier: { name: '', vehicle: '', driver: '', logType: '' }, supplierSaved: false, currentHeight: null, lines: [newLine('1')], activity: [] };
+  s.activity.push({ t: s.createdAt, text: 'Load started' });
+  return s;
+}
+/* Turn anything (saved state, imported file, older version) into a valid session */
+function sanitizeSession(raw) {
+  var s = newSession(); s.activity = [];
+  if (!raw || typeof raw !== 'object') { s.activity.push({ t: s.createdAt, text: 'Load started' }); return s; }
+  if (typeof raw.id === 'string' && raw.id) s.id = raw.id;
+  if (typeof raw.createdAt === 'string' && !isNaN(new Date(raw.createdAt))) s.createdAt = raw.createdAt;
+  if (typeof raw.savedAt === 'string') s.savedAt = raw.savedAt;
+  var sp = raw.supplier || {};
+  s.supplier = { name: str(sp.name), vehicle: str(sp.vehicle), driver: str(sp.driver), logType: str(sp.logType) };
+  s.supplierSaved = !!raw.supplierSaved && !!s.supplier.name.trim() && !!s.supplier.vehicle.trim() && !!s.supplier.driver.trim();
+  function cleanLogs(list) {
+    var out = [];
+    (Array.isArray(list) ? list : []).forEach(function (l) {
+      if (!l) return;
+      var feet = Number(l.feet), inches = Number(l.inches), girth = Number(l.girth);
+      if (Number.isInteger(feet) && feet >= 1 && Number.isInteger(inches) && inches >= 0 && inches <= 11 && isFinite(girth) && girth > 0) {
+        out.push({ id: (typeof l.id === 'string' && l.id) ? l.id : uid(), pinned: !!l.pinned, feet: feet, inches: inches, girth: girth,
+          volume: calculateVolume(girth, feet, inches),     // always recomputed with the original formula
+          createdAt: typeof l.createdAt === 'string' ? l.createdAt : s.createdAt });
+      }
+    });
+    return out;
+  }
+  var lines = [];
+  if (Array.isArray(raw.lines) && raw.lines.length) {
+    raw.lines.forEach(function (ln, i) {
+      if (!ln) return;
+      lines.push({ id: (typeof ln.id === 'string' && ln.id) ? ln.id : uid(), number: str(ln.number).trim().slice(0, 12) || String(i + 1),
+        createdAt: typeof ln.createdAt === 'string' ? ln.createdAt : s.createdAt, completedAt: typeof ln.completedAt === 'string' ? ln.completedAt : null, logs: cleanLogs(ln.logs) });
+    });
+  } else if (Array.isArray(raw.logs)) { var one = newLine('1'); one.logs = cleanLogs(raw.logs); lines.push(one); }
+  if (!lines.length) lines.push(newLine('1'));
+  var seen = {};
+  lines.forEach(function (ln) { var base = ln.number, n = 2; while (seen[ln.number.toLowerCase()]) ln.number = base + '-' + (n++); seen[ln.number.toLowerCase()] = true; });
+  lines.forEach(function (ln, i) { if (i < lines.length - 1 && !ln.completedAt) ln.completedAt = ln.createdAt; });
+  if (lines[lines.length - 1].completedAt) {
+    var nums = lines.map(function (l) { return parseInt(l.number, 10); }).filter(isFinite);
+    lines.push(newLine((nums.length ? Math.max.apply(null, nums) : 0) + 1));
+  }
+  s.lines = lines;
+  var h = raw.currentHeight;
+  if (h && Number.isInteger(Number(h.feet)) && Number(h.feet) >= 1 && Number.isInteger(Number(h.inches)) && Number(h.inches) >= 0 && Number(h.inches) <= 11) s.currentHeight = { feet: Number(h.feet), inches: Number(h.inches) };
+  if (Array.isArray(raw.activity)) {
+    s.activity = raw.activity.filter(function (a) { return a && typeof a.text === 'string'; })
+      .map(function (a) { return { t: typeof a.t === 'string' ? a.t : s.createdAt, text: a.text.slice(0, 200) }; }).slice(-MAX_ACTIVITY);
+  }
+  if (!s.activity.length) s.activity.push({ t: s.createdAt, text: 'Load started' });
+  return s;
+}
+
+function curLine() { return session.lines[session.lines.length - 1]; }
+function lineById(id) { return session.lines.find(function (l) { return l.id === id; }); }
+function lineLabel(l) { return 'Line ' + l.number; }
+function sessionHasContent(s) { return s.lines.some(function (l) { return l.logs.length > 0; }); }
+function allEntries() {
+  var out = [], serial = 0;
+  session.lines.forEach(function (line) { line.logs.forEach(function (log, idx) { out.push({ log: log, line: line, idx: idx, serial: ++serial }); }); });
+  return out;
+}
+function findRef(id) {
+  for (var i = 0; i < session.lines.length; i++) {
+    var line = session.lines[i], idx = line.logs.findIndex(function (l) { return l.id === id; });
+    if (idx >= 0) return { line: line, log: line.logs[idx], idx: idx };
+  }
+  return null;
+}
+function lineStats(line) {
+  var vol = line.logs.reduce(function (s, l) { return s + l.volume; }, 0), tg = line.logs.reduce(function (s, l) { return s + l.girth; }, 0);
+  return { count: line.logs.length, volume: vol, avgGirth: line.logs.length ? tg / line.logs.length : 0 };
+}
+function computeStats(sess) {
+  var s = sess || session, entries = [], serial = 0;
+  s.lines.forEach(function (line) { line.logs.forEach(function (log, idx) { entries.push({ log: log, line: line, idx: idx, serial: ++serial }); }); });
+  var st = { count: entries.length, volume: 0, totalGirth: 0, maxGirth: 0, minGirth: 0, pinned: 0, largest: null, smallest: null }, max = -Infinity, min = Infinity;
+  entries.forEach(function (e) {
+    st.volume += e.log.volume; st.totalGirth += e.log.girth;
+    if (e.log.girth > max) max = e.log.girth; if (e.log.girth < min) min = e.log.girth;
+    if (e.log.pinned) st.pinned++;
+    if (!st.largest || e.log.volume > st.largest.log.volume) st.largest = e;
+    if (!st.smallest || e.log.volume < st.smallest.log.volume) st.smallest = e;
+  });
+  if (st.count) { st.maxGirth = max; st.minGirth = min; }
+  st.avgGirth = st.count ? st.totalGirth / st.count : 0; st.avgVolume = st.count ? st.volume / st.count : 0;
+  st.linesWithLogs = s.lines.filter(function (l) { return l.logs.length > 0; });
+  st.totalLines = st.linesWithLogs.length;
+  st.completedLines = s.lines.filter(function (l) { return l.completedAt; }).length;
+  return st;
+}
+function unitLabel() { return UNITS[settings.unit].label; }
+function fmtV(v) { return (Number(v) * UNITS[settings.unit].factor).toFixed(settings.decimals); }
+function fmtVU(v) { return fmtV(v) + ' ' + unitLabel(); }
+function fmtG(v) { return Number(v).toFixed(settings.decimals); }
+
+/* ============================================================
+   PERSISTENCE (auto-save)
+   ============================================================ */
+function saveState() {
+  var ok = Store.write(KEYS.state, { session: session, savedAt: nowISO() });
+  ui.saveOk = ok; if (ok) ui.lastSaved = new Date(); renderSaveStatus(); return ok;
+}
+function saveSettings() { Store.write(KEYS.settings, settings); }
+function renderSaveStatus() {
+  var el = $('saveStatus');
+  if (!ui.saveOk) { el.className = 'save-status wide bad'; el.textContent = '⚠ Could not save on this device. Download a backup or PDF to keep your work.'; return; }
+  el.className = 'save-status wide';
+  el.textContent = (settings.showSaveStatus && ui.lastSaved) ? '✓ Data saved locally · ' + ui.lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+}
+function loadSavedSession() {
+  var raw = null; try { raw = localStorage.getItem(KEYS.state); } catch (e) {}
+  if (!raw) return { session: newSession(), hadData: false };
+  try {
+    var s = sanitizeSession((JSON.parse(raw) || {}).session);
+    return { session: s, hadData: sessionHasContent(s) || s.supplierSaved || !!s.supplier.name };
+  } catch (e) {
+    try { localStorage.setItem(KEYS.state + '.corrupt', raw); } catch (e2) {}
+    setTimeout(function () { toast('Saved data could not be read. A copy was kept and a new load started.', 'error', { duration: 6000 }); }, 300);
+    return { session: newSession(), hadData: false };
+  }
+}
+function getHistory() { var h = Store.read(KEYS.sessions, []); return Array.isArray(h) ? h : []; }
+function setHistory(h) { return Store.write(KEYS.sessions, h.slice(0, MAX_SESSIONS)); }
+function archiveSession(s) {
+  var snap = JSON.parse(JSON.stringify(s)); snap.savedAt = nowISO();
+  var h = getHistory().filter(function (x) { return x.id !== snap.id; }); h.unshift(snap); return setHistory(h);
+}
+function addActivity(text) { session.activity.push({ t: nowISO(), text: text }); if (session.activity.length > MAX_ACTIVITY) session.activity.shift(); }
+/* Save + redraw after every change to the data */
+function commit() { saveState(); renderAll(); }
+
+/* ============================================================
+   RENDERING (only the visible screen is redrawn)
+   ============================================================ */
+function renderAll() {
+  renderUnits(); renderTopbar();
+  var S = computeStats();
+  ({ home: renderHome, loads: renderLoads, measure: renderMeasure, logs: renderLogsView, reports: renderReports, settings: function () {} }[ui.view] || renderHome)(S);
+  if ($('lineDetailSheet').open) renderLineDetail();
+  if ($('infoSheet').open) renderInfo(S);
+}
+function renderUnits() { document.querySelectorAll('.u-label').forEach(function (el) { el.textContent = unitLabel(); }); }
+function heightText() { return session.currentHeight ? formatHeight(session.currentHeight.feet, session.currentHeight.inches) : '--'; }
+function supplierLine() {
+  var s = session.supplier, bits = [s.name.trim(), s.vehicle.trim()].filter(Boolean);
+  return bits.length ? bits.join(' · ') : 'No load details yet';
+}
+function greeting() { var h = new Date().getHours(); return (h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening') + ' 👋'; }
+
+function renderTopbar() {
+  var v = ui.view, t = 'Timber Logs', sub = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  if (v === 'loads') { t = 'Loads'; sub = supplierLine(); }
+  else if (v === 'measure') { t = 'Measure logs'; sub = supplierLine(); }
+  else if (v === 'logs') { t = 'All logs'; sub = supplierLine(); }
+  else if (v === 'reports') { t = 'Reports'; sub = supplierLine(); }
+  else if (v === 'settings') { t = 'Settings'; sub = 'Appearance, data and measuring'; }
+  $('tbTitle').textContent = t; $('tbSub').textContent = sub;
+  $('backBtn').hidden = !(v === 'measure' || v === 'logs');
+  $('menuBtn').hidden = v !== 'measure';
+  $('themeBtn').hidden = v === 'measure' || v === 'logs';
+}
+
+/* ---- Home ---- */
+function renderHome(S) {
+  var s = session.supplier, saved = session.supplierSaved, cl = curLine();
+  $('greetText').textContent = greeting();
+  $('hlName').textContent = saved ? s.name : 'No load set up yet';
+  $('hlMeta').textContent = saved ? [s.vehicle, s.driver, s.logType].filter(Boolean).join(' · ') : 'Add the supplier and vehicle to begin.';
+  $('hlPill').textContent = saved ? 'Details saved' : 'Details needed';
+  $('hlLogs').textContent = S.count; $('hlVol').textContent = fmtV(S.volume); $('hlLine').textContent = lineLabel(cl);
+  $('editLoadLabel').textContent = saved ? 'Edit load details' : 'Add load details';
+  $('sLogs').textContent = S.count; $('sVol').textContent = fmtV(S.volume); $('sLine').textContent = lineLabel(cl);
+  $('sDone').textContent = S.completedLines; $('sAvg').textContent = fmtG(S.avgGirth); $('sHeight').textContent = heightText();
+  $('activityList').innerHTML = session.activity.slice(-8).reverse().map(function (a) { return '<li><span class="t">' + esc(shortTime(a.t)) + '</span><span>' + esc(a.text) + '</span></li>'; }).join('');
+  renderSaveStatus();
+}
+
+/* ---- Log rows (compact; tap a row or its menu for actions) ---- */
+function rowHTML(e, showLine, isNew) {
+  var l = e.log, num = pad2(e.idx + 1);
+  return '<li class="lrow' + (l.pinned ? ' pinned' : '') + (isNew ? ' new' : '') + '" data-id="' + esc(l.id) + '" tabindex="0" role="button" aria-label="Log ' + num + ', girth ' + l.girth + ' inches, height ' + formatHeight(l.feet, l.inches) + ', volume ' + fmtV(l.volume) + ' ' + unitLabel() + '. Open actions">' +
+    '<div class="lr-num num">#' + num + '</div>' +
+    '<div><div class="lr-girth num">' + l.girth + '<small>"</small> <span class="vh">girth</span></div><div class="lr-sub">' + formatHeight(l.feet, l.inches) + ' height' + (showLine ? '<span class="ln">' + esc(lineLabel(e.line)) + '</span>' : '') + '</div></div>' +
+    '<div class="lr-vol"><b class="num">' + fmtV(l.volume) + '</b><small>' + unitLabel() + '</small></div>' +
+    '<div class="lr-end">' + (l.pinned ? '<i class="bi bi-pin-angle-fill lr-pin" aria-hidden="true"></i><span class="vh">Pinned</span>' : '') +
+    '<span class="lr-more" aria-hidden="true"><i class="bi bi-three-dots"></i></span></div></li>';
+}
+
+/* ---- Measure ---- */
+function parseGirthList(text) {
+  var out = new Set();
+  String(text).split(/[\s,;]+/).forEach(function (tok) {
+    if (!tok) return;
+    var m = tok.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
+    if (m) { var a = +m[1], b = +m[2]; if (a > b) { var t = a; a = b; b = t; } for (var g = a; g <= b && g <= MAX_GIRTH && out.size < 120; g += 1) if (g > 0) out.add(+g.toFixed(2)); }
+    else { var n = Number(tok); if (isFinite(n) && n > 0 && n <= MAX_GIRTH && out.size < 120) out.add(n); }
+  });
+  return Array.from(out).sort(function (a, b) { return a - b; });
+}
+function buildGirthGrid() {
+  quickValues = parseGirthList(settings.quickGirths);
+  if (!quickValues.length) quickValues = parseGirthList(DEFAULT_QUICK);
+  $('girthGrid').innerHTML = quickValues.map(function (g) {
+    return '<button type="button" class="gbtn d' + (Math.floor(g / 10) % 4) + '" data-g="' + g + '" aria-label="Girth ' + g + ' inches"><span class="gn">' + g + '</span><span class="gu">in</span><span class="gtally" hidden></span></button>';
+  }).join('');
+}
+function markGirthSelected() {
+  var v = parseFloat($('girthInput').value);
+  $('girthGrid').querySelectorAll('.gbtn').forEach(function (b) { b.classList.toggle('sel', isFinite(v) && Number(b.dataset.g) === v); });
+}
+function renderMeasure(S) {
+  var cl = curLine(), st = lineStats(cl), hasH = !!session.currentHeight;
+  $('loadBanner').hidden = session.supplierSaved;
+  $('hero').classList.toggle('unset', !hasH);
+  $('heroHeight').textContent = heightText();
+  $('changeHeightLabel').textContent = hasH ? 'Change height' : 'Set height';
+  $('heroLine').textContent = cl.number; $('heroLineK').textContent = 'Line';
+  $('heroLogs').textContent = st.count; $('heroVol').textContent = fmtV(st.volume);
+  $('miniHeight').textContent = heightText(); $('miniLine').textContent = lineLabel(cl) + ' · ' + st.count + ' logs'; $('miniVol').textContent = fmtVU(st.volume);
+  // Height chips: common heights, then recent ones
+  var cur = session.currentHeight, seen = {}, chips = [];
+  PRESETS.concat(settings.recentHeights).forEach(function (h) { var k = h.feet + '-' + h.inches; if (!seen[k]) { seen[k] = 1; chips.push(h); } });
+  $('heightChips').innerHTML = chips.map(function (h) {
+    var on = cur && cur.feet === h.feet && cur.inches === h.inches;
+    return '<button type="button" class="hchip' + (on ? ' active' : '') + '" data-hf="' + h.feet + '" data-hi="' + h.inches + '" aria-pressed="' + !!on + '">' + formatHeight(h.feet, h.inches) + '</button>';
+  }).join('');
+  // Girth grid: enabled only once a height is applied; each button shows how many logs of that girth are in this line
+  var tally = new Map(); cl.logs.forEach(function (l) { tally.set(l.girth, (tally.get(l.girth) || 0) + 1); });
+  $('girthGrid').querySelectorAll('.gbtn').forEach(function (b) {
+    b.disabled = !hasH;
+    var n = tally.get(Number(b.dataset.g)) || 0, t = b.querySelector('.gtally');
+    t.hidden = !n; t.textContent = n;
+  });
+  $('tapAddToggle').checked = settings.tapAdd;
+  $('addHint').textContent = !hasH ? 'Set the height first, then tap a girth.' : (settings.tapAdd ? 'Tap a girth to add a log instantly. Use the box for in-between sizes.' : 'Tap a girth to fill the box, then press ADD LOG.');
+  markGirthSelected();
+  var items = cl.logs.slice(-5).reverse().map(function (log) { return rowHTML({ log: log, line: cl, idx: cl.logs.indexOf(log) }, false, log.id === ui.flashId); });
+  $('recentList').innerHTML = items.join(''); $('recentList').hidden = !items.length; $('recentEmpty').hidden = items.length > 0;
+  $('viewAllBtn').textContent = 'View all (' + S.count + ')'; $('viewAllBtn').hidden = !S.count;
+  ui.flashId = null;
+}
+
+/* ---- All logs: search / filter / sort never change the stored data ---- */
+function matchesFilter(e) {
+  var f = ui.filter; if (f.pinned && !e.log.pinned) return false;
+  var q = f.q.trim().toLowerCase(); if (!q) return true;
+  var l = e.log, girthMatch = String(l.girth).startsWith(q.replace(/^#/, ''));
+  var qh = q.replace(/"/g, '').replace(/\s*(ft|feet)\s*/g, "'").replace(/\s+/g, "'").replace(/'+/g, "'").replace(/'$/, '');
+  var heightMatch = /^\d+$/.test(qh) ? l.feet === Number(qh) : (l.feet + "'" + l.inches).startsWith(qh);
+  var numberMatch = String(e.idx + 1) === q.replace(/^#/, '').replace(/^0+(?=\d)/, '');
+  if (f.field === 'girth') return girthMatch; if (f.field === 'height') return heightMatch; if (f.field === 'number') return numberMatch;
+  return girthMatch || heightMatch || numberMatch;
+}
+function visibleEntries() {
+  var list = allEntries();
+  if (ui.scope === 'current') { var id = curLine().id; list = list.filter(function (e) { return e.line.id === id; }); }
+  list = list.filter(matchesFilter);
+  var cmp = {
+    'newest': function (a, b) { return b.serial - a.serial; }, 'oldest': function (a, b) { return a.serial - b.serial; },
+    'girth-asc': function (a, b) { return a.log.girth - b.log.girth || a.serial - b.serial; }, 'girth-desc': function (a, b) { return b.log.girth - a.log.girth || a.serial - b.serial; },
+    'vol-asc': function (a, b) { return a.log.volume - b.log.volume || a.serial - b.serial; }, 'vol-desc': function (a, b) { return b.log.volume - a.log.volume || a.serial - b.serial; }
+  }[ui.sort];
+  return list.sort(cmp);
+}
+function activeFilterCount() { return (ui.filter.q.trim() ? 1 : 0) + (ui.filter.pinned ? 1 : 0) + (ui.scope === 'all' ? 1 : 0); }
+function renderLogsView() {
+  var cl = curLine(), st = lineStats(cl);
+  $('logsCounter').textContent = lineLabel(cl) + ' • ' + st.count + (st.count === 1 ? ' Log' : ' Logs') + ' • ' + fmtVU(st.volume);
+  var total = ui.scope === 'all' ? allEntries().length : cl.logs.length, vis = total ? visibleEntries() : [], shown = vis.slice(0, ui.logLimit);
+  $('logList').innerHTML = shown.map(function (e) { return rowHTML(e, ui.scope === 'all', e.log.id === ui.flashId); }).join(''); ui.flashId = null;
+  $('logList').hidden = !shown.length; $('logsEmpty').hidden = total > 0; $('logsNoMatch').hidden = !(total > 0 && vis.length === 0);
+  $('moreWrap').hidden = vis.length <= shown.length;
+  $('showMoreBtn').textContent = 'Show ' + Math.min(PAGE_SIZE, vis.length - shown.length) + ' more (' + (vis.length - shown.length) + ' hidden)';
+  var n = activeFilterCount(); $('filterBadge').hidden = !n; $('filterBadge').textContent = n;
+  var rl = $('resultsLine'); rl.hidden = !(n > 0 && total > 0); rl.textContent = 'Showing ' + vis.length + ' of ' + total + (total === 1 ? ' log' : ' logs');
+  $('clearLogsBtn').disabled = cl.logs.length === 0;
+}
+
+/* ---- Loads: current load, lines, history ---- */
+function kvHTML(pairs) { return pairs.map(function (p) { return '<div><div class="k">' + esc(p[0]) + '</div><div class="v">' + esc(p[1]) + '</div></div>'; }).join(''); }
+function renderLoads(S) {
+  var cur = ui.loadsTab === 'current';
+  $('segCurrent').setAttribute('aria-selected', cur); $('segHistory').setAttribute('aria-selected', !cur);
+  $('loadsCurrent').hidden = !cur; $('loadsHistory').hidden = cur;
+  if (cur) {
+    var s = session.supplier, saved = session.supplierSaved, cl = curLine(), st = lineStats(cl);
+    $('lcPill').className = 'pill ' + (saved ? 'ok' : 'warn'); $('lcPill').textContent = saved ? '✓ Saved' : 'Not saved';
+    $('lcKv').innerHTML = kvHTML([['Supplier', s.name || '--'], ['Vehicle', s.vehicle || '--'], ['Driver', s.driver || '--'], ['Log type', s.logType || '--']]);
+    $('lcEditLabel').textContent = saved ? 'Edit details' : 'Add details';
+    $('curLineTitle').textContent = lineLabel(cl); $('curLineCount').textContent = st.count; $('curLineVol').textContent = fmtVU(st.volume); $('curLineAvg').textContent = fmtG(st.avgGirth) + '"';
+    var done = session.lines.filter(function (l) { return l.completedAt; });
+    $('linesList').innerHTML = done.map(function (line) {
+      var x = lineStats(line);
+      return '<button type="button" class="card load-item" data-openline="' + esc(line.id) + '" aria-label="Open Line ' + esc(line.number) + '"><div class="li-top"><span class="line-title num">LINE ' + esc(line.number) + '</span><span class="pill ok">Completed</span></div>' +
+        '<div class="li-stats"><span><b class="num">' + x.count + '</b> <small>logs</small></span><span><b class="num">' + fmtV(x.volume) + '</b> <small>' + unitLabel() + '</small></span><span><b class="num">' + fmtG(x.avgGirth) + '"</b> <small>avg girth</small></span></div></button>';
+    }).join('');
+    $('linesEmpty').hidden = done.length > 0;
+    $('linesTotalText').innerHTML = 'Grand total (current + completed lines)<div class="num" style="font-size:1.7rem">' + esc(fmtVU(S.volume)) + '</div><div class="hint">' + S.count + (S.count === 1 ? ' log' : ' logs') + ' in ' + session.lines.length + (session.lines.length === 1 ? ' line' : ' lines') + '</div>';
+  } else renderHistory();
+}
+function renderLineDetail() {
+  var line = lineById(ui.detailLineId); if (!line) { $('lineDetailSheet').close(); return; }
+  var st = lineStats(line), isCur = line === curLine();
+  $('ldTitle').textContent = lineLabel(line);
+  $('ldSub').textContent = 'Started ' + longDateTime(line.createdAt) + (line.completedAt ? ' · Finished ' + longDateTime(line.completedAt) : '');
+  $('ldPill').className = 'pill ' + (isCur ? 'warn' : 'ok'); $('ldPill').textContent = isCur ? 'In progress' : 'Completed';
+  $('ldMetrics').innerHTML = '<div><div class="k">Logs</div><div class="v num">' + st.count + '</div></div><div><div class="k">Volume</div><div class="v num">' + fmtV(st.volume) + ' <small>' + unitLabel() + '</small></div></div><div><div class="k">Avg girth</div><div class="v num">' + fmtG(st.avgGirth) + '"</div></div>';
+  $('ldReopen').hidden = isCur;
+  $('ldList').innerHTML = line.logs.map(function (log, idx) { return { log: log, line: line, idx: idx }; }).reverse().map(function (e) { return rowHTML(e, false, false); }).join('') || '<li class="empty">No logs in this line.</li>';
+}
+function renderHistory() {
+  var h = getHistory(), list = $('histList');
+  $('histEmpty').hidden = h.length > 0;
+  list.innerHTML = h.map(function (raw) {
+    var s = sanitizeSession(raw), x = computeStats(s), isCur = s.id === session.id;
+    return '<button type="button" class="card load-item" data-sid="' + esc(s.id) + '"><div class="li-top"><span class="li-name">' + esc(s.supplier.name || 'Untitled load') + '</span><span class="pill ' + (isCur ? 'warn' : '') + '">' + (isCur ? 'Current' : 'Saved') + '</span></div>' +
+      '<div class="li-meta">' + esc(s.supplier.vehicle || 'No vehicle') + ' · ' + esc(localDate(raw.savedAt || s.createdAt)) + '</div>' +
+      '<div class="li-stats"><span><b class="num">' + x.count + '</b> <small>logs</small></span><span><b class="num">' + esc(fmtV(x.volume)) + '</b> <small>' + unitLabel() + '</small></span><span><b class="num">' + x.totalLines + '</b> <small>' + (x.totalLines === 1 ? 'line' : 'lines') + '</small></span></div></button>';
+  }).join('');
+}
+function renderInfo(S) {
+  var s = session.supplier;
+  var rows = [['Started', longDateTime(session.createdAt)], ['Supplier', s.name || '--'], ['Vehicle', s.vehicle || '--'], ['Driver', s.driver || '--'], ['Log type', s.logType || '--'],
+    ['Details saved', session.supplierSaved ? 'Yes' : 'No'], ['Lines', session.lines.length + ' (' + S.completedLines + ' completed)'], ['Current line', lineLabel(curLine())], ['Logs', String(S.count)], ['Total volume', fmtVU(S.volume)]];
+  $('infoList').innerHTML = rows.map(function (r) { return '<div><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('');
+}
+
+/* ---- Reports ---- */
+function renderReports(S) {
+  $('rLoadName').textContent = supplierLine();
+  $('rCount').textContent = S.count; $('rVolume').textContent = fmtV(S.volume); $('rLines').textContent = S.totalLines;
+  $('rAvg').textContent = S.count ? fmtG(S.avgGirth) : 0; $('rMax').textContent = S.maxGirth; $('rMin').textContent = S.minGirth;
+  function describe(e) { return e ? lineLabel(e.line) + ' #' + pad2(e.idx + 1) + ' · ' + fmtVU(e.log.volume) + ' (' + formatHeight(e.log.feet, e.log.inches) + ', ' + e.log.girth + '")' : '--'; }
+  $('rAvgVol').textContent = S.count ? fmtVU(S.avgVolume) : '--'; $('rLargest').textContent = describe(S.largest); $('rSmallest').textContent = describe(S.smallest);
+  $('rLogsPerLine').textContent = S.totalLines ? (S.count / S.totalLines).toFixed(1) : '--'; $('rVolPerLine').textContent = S.totalLines ? fmtVU(S.volume / S.totalLines) : '--'; $('rPinned').textContent = S.pinned;
+  var box = $('volByLine'), lines = S.linesWithLogs;
+  if (!lines.length) box.innerHTML = '<div class="chart-empty">Add logs to see volume by line.</div>';
+  else { var vols = lines.map(function (l) { return lineStats(l).volume; }), max = Math.max.apply(null, vols) || 1;
+    box.innerHTML = lines.map(function (l, i) { return '<div class="hbar-row"><span style="font-weight:800">Line ' + esc(l.number) + '</span><div class="hbar-track"><div class="hbar" style="width:' + (vols[i] / max * 100).toFixed(1) + '%"></div></div><span class="hbar-val">' + esc(fmtVU(vols[i])) + '</span></div>'; }).join(''); }
+  renderGirthChart();
+}
+function renderGirthChart() {
+  var box = $('chartBox'), entries = allEntries();
+  if (!entries.length) { box.innerHTML = '<div class="chart-empty">Add logs to see the girth distribution.</div>'; return; }
+  var bins = new Map(); entries.forEach(function (e) { var k = Math.floor(e.log.girth); bins.set(k, (bins.get(k) || 0) + 1); });
+  var keys = Array.from(bins.keys()), lo = Math.min.apply(null, keys), hi = Math.max.apply(null, keys), items = [];
+  if (hi - lo <= 60) { for (var k = lo; k <= hi; k++) items.push({ label: String(k), value: bins.get(k) || 0 }); }
+  else keys.sort(function (a, b) { return a - b; }).forEach(function (k) { items.push({ label: String(k), value: bins.get(k) }); });
+  var W = Math.max(260, box.clientWidth || 320), H = 190, L = 32, R = 6, T = 10, B = 26, iw = W - L - R, ih = H - T - B;
+  var maxV = Math.max.apply(null, items.map(function (i) { return i.value; })), step = Math.max(1, Math.ceil(maxV / 4)), top = Math.ceil(maxV / step) * step;
+  var svg = '<svg class="chart-svg" viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" role="img" aria-label="Girth distribution chart">';
+  for (var v = 0; v <= top; v += step) { var y = T + ih - (v / top) * ih; svg += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '"/><text x="' + (L - 6) + '" y="' + (y + 4) + '" text-anchor="end">' + v + '</text>'; }
+  var n = items.length, bw = iw / n, barW = Math.max(2, bw * 0.72), every = Math.ceil(n / Math.max(1, Math.floor(iw / 30)));
+  items.forEach(function (it, i) {
+    var h = (it.value / top) * ih, x = L + i * bw + (bw - barW) / 2, yy = T + ih - h;
+    if (it.value > 0) svg += '<rect class="bar" x="' + x.toFixed(1) + '" y="' + yy.toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="2"><title>' + it.label + ' in: ' + it.value + (it.value === 1 ? ' log' : ' logs') + '</title></rect>';
+    if (i % every === 0) svg += '<text x="' + (x + barW / 2).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle">' + it.label + '</text>';
+  });
+  box.innerHTML = svg + '</svg>';
+}
+
+/* ============================================================
+   LOAD DETAILS (supplier): Save / Edit. Validation messages are inline.
+   ============================================================ */
+var SUPPLIER_FIELDS = [
+  { id: 'supplierName', key: 'name', validate: function (v) { return v ? '' : 'Enter the supplier name.'; } },
+  { id: 'vehicleNumber', key: 'vehicle', validate: function (v) { return !v ? 'Enter the vehicle number.' : (/^[A-Za-z0-9][A-Za-z0-9 \-]{2,19}$/.test(v) ? '' : 'Use 3 to 20 letters or digits, e.g. JK01AB1234.'); } },
+  { id: 'driverName', key: 'driver', validate: function (v) { return v ? '' : 'Enter the driver name.'; } }
+];
+function openLoadSheet() {
+  var s = session.supplier;
+  $('supplierName').value = s.name; $('vehicleNumber').value = s.vehicle; $('driverName').value = s.driver;
+  var lt = $('logType'); lt.value = s.logType; if (lt.value !== s.logType) lt.value = '';
+  SUPPLIER_FIELDS.forEach(function (f) { $(f.id).classList.remove('is-invalid'); $(f.id + 'Err').textContent = ''; });
+  $('loadSheetTitle').textContent = session.supplierSaved ? 'Edit load details' : 'Load details';
+  $('loadSheet').showModal(); $('supplierName').focus();
+}
+function saveSupplier(e) {
+  if (e) e.preventDefault();
+  var vals = { name: $('supplierName').value.trim(), vehicle: $('vehicleNumber').value.trim().toUpperCase(), driver: $('driverName').value.trim(), logType: $('logType').value }, firstBad = null;
+  SUPPLIER_FIELDS.forEach(function (f) {
+    var msg = f.validate(vals[f.key]); $(f.id).classList.toggle('is-invalid', !!msg); $(f.id + 'Err').textContent = msg; if (msg && !firstBad) firstBad = f.id;
+  });
+  if (firstBad) { $(firstBad).focus(); toast('Please fix the highlighted fields', 'warn'); return; }
+  session.supplier = vals; session.supplierSaved = true;
+  addActivity('Load details saved: ' + vals.name); $('loadSheet').close(); commit(); toast('Supplier saved');
+}
+
+/* ============================================================
+   HEIGHT. A log keeps the height it was created with; changing
+   the current height never touches existing logs.
+   ============================================================ */
+function setHeight(feet, inches) {
+  if (!Number.isInteger(feet) || feet < 1 || feet > MAX_FEET) { $('hsErr').textContent = 'Select the height in feet.'; return false; }
+  if (!Number.isInteger(inches) || inches < 0 || inches > 11) { $('hsErr').textContent = 'Inches must be between 0 and 11.'; return false; }
+  var hadLogs = allEntries().length > 0;
+  session.currentHeight = { feet: feet, inches: inches };
+  settings.recentHeights = [{ feet: feet, inches: inches }].concat(settings.recentHeights.filter(function (h) { return !(h.feet === feet && h.inches === inches); })).slice(0, 5);
+  saveSettings(); addActivity('Height applied: ' + formatHeight(feet, inches)); commit();
+  var hero = $('hero'); hero.classList.remove('flash'); void hero.offsetWidth; hero.classList.add('flash');
+  toast('Height applied: ' + formatHeight(feet, inches) + (hadLogs ? '. New logs only.' : ''), 'success', { key: 'height', duration: 2000 });
+  return true;
+}
+function buildHeightSheet() {
+  var f = '', i = '';
+  for (var n = 1; n <= 30; n++) f += '<button type="button" data-hf="' + n + '" aria-pressed="false">' + n + '</button>';
+  for (var m = 0; m < 12; m++) i += '<button type="button" data-hi="' + m + '" aria-pressed="false">' + m + '</button>';
+  $('hsFeet').innerHTML = f; $('hsInches').innerHTML = i;
+}
+function renderHeightSheet() {
+  var h = ui.hSel;
+  $('hsFeet').querySelectorAll('button').forEach(function (b) { var on = Number(b.dataset.hf) === h.feet; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', on); });
+  $('hsInches').querySelectorAll('button').forEach(function (b) { var on = Number(b.dataset.hi) === h.inches; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', on); });
+  $('hsSelected').textContent = h.feet ? formatHeight(h.feet, h.inches) : '--';
+  $('hsApply').disabled = !h.feet; $('hsClear').hidden = !session.currentHeight;
+}
+function openHeightSheet() {
+  var c = session.currentHeight; ui.hSel = c ? { feet: c.feet, inches: c.inches } : { feet: null, inches: 0 };
+  $('hsErr').textContent = ''; renderHeightSheet(); $('heightSheet').showModal();
+  var sel = $('hsFeet').querySelector('.sel'); if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'nearest' });
+}
+
+/* ============================================================
+   LOGS: add / edit / duplicate / delete / pin / clear
+   ============================================================ */
+function showGirthError(msg) { $('girthInput').classList.toggle('is-invalid', !!msg); $('girthErr').textContent = msg || ''; }
+var addedTimer = null;
+function bumpEl(el) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+
+/* Core add: used by girth buttons, the custom box and duplicate. Returns the new log or null. */
+function addLogValue(g, height) {
+  var h = height || session.currentHeight;
+  if (!h) { toast('Set the height first', 'warn', { key: 'needh' }); feedbackTick('err'); openHeightSheet(); return null; }
+  if (!isFinite(g) || g <= 0 || g > MAX_GIRTH) { showGirthError('Enter a girth greater than 0 (up to ' + MAX_GIRTH + ' in).'); toast('Please enter a valid girth', 'warn'); feedbackTick('err'); return null; }
+  var cl = curLine();
+  var log = { id: uid(), pinned: false, feet: h.feet, inches: h.inches, girth: g, volume: calculateVolume(g, h.feet, h.inches), createdAt: nowISO() };
+  cl.logs.push(log); ui.flashId = log.id;
+  var n = cl.logs.length;
+  addActivity('Log #' + n + ' (' + lineLabel(cl) + ') · Girth ' + g + '" · ' + fmtVU(log.volume));
+  commit();
+  if (ui.view === 'measure') {
+    var msg = $('addedMsg'); msg.textContent = '✓ Log #' + pad2(n) + ' added · ' + g + '"'; msg.classList.add('show');
+    clearTimeout(addedTimer); addedTimer = setTimeout(function () { msg.classList.remove('show'); }, 1600);
+    bumpEl($('heroLogs')); bumpEl($('heroVol'));
+    var gb = $('girthGrid').querySelector('.gbtn[data-g="' + g + '"]');
+    if (gb) { gb.classList.remove('hit'); void gb.offsetWidth; gb.classList.add('hit'); var t = gb.querySelector('.gtally'); if (t) bumpEl(t); }
+  }
+  feedbackTick('ok');
+  return log;
+}
+function onGirthTap(btn) {
+  if (btn.disabled) return;
+  var g = Number(btn.dataset.g), now = Date.now();
+  if (now - (ui.lastTap[g] || 0) < 220) return;          // ignore accidental double-taps on the same button
+  ui.lastTap[g] = now;
+  if (settings.tapAdd) addLogValue(g);
+  else { $('girthInput').value = g; ui.typedGirth = false; showGirthError(''); markGirthSelected(); }
+}
+function addLogFromInput() {
+  showGirthError('');
+  if (!session.currentHeight) { toast('Set the height first', 'warn', { key: 'needh' }); openHeightSheet(); return; }
+  var raw = $('girthInput').value.trim(), g = Number(raw);
+  if (raw === '' || !isFinite(g) || g <= 0 || g > MAX_GIRTH) { showGirthError('Enter a girth greater than 0 (up to ' + MAX_GIRTH + ' in).'); toast('Please enter a valid girth', 'warn'); feedbackTick('err'); $('girthInput').focus(); return; }
+  var typed = ui.typedGirth;
+  if (addLogValue(g)) {
+    $('girthInput').value = ''; markGirthSelected();
+    var coarse = window.matchMedia && window.matchMedia('(pointer:coarse)').matches;
+    if (coarse) $('girthInput').blur();                    // phones: close the keyboard so the grid is visible again
+    else if (settings.autoFocus && typed) $('girthInput').focus({ preventScroll: true });
+  }
+}
+function duplicateLog(id) {
+  var r = findRef(id); if (!r) return;
+  var log = addLogValue(r.log.girth, { feet: r.log.feet, inches: r.log.inches });
+  if (log) toast('Duplicated: log #' + pad2(curLine().logs.length) + ' added to ' + lineLabel(curLine()), 'success', { key: 'dup' });
+}
+function openLogActions(id) {
+  var r = findRef(id); if (!r) return;
+  var num = pad2(r.idx + 1), l = r.log;
+  openActions('Log #' + num, l.girth + '" girth · ' + formatHeight(l.feet, l.inches) + ' · ' + fmtVU(l.volume) + (r.line !== curLine() ? ' · ' + lineLabel(r.line) : ''), [
+    { label: 'Edit', icon: 'pencil', onClick: function () { openEdit(id); } },
+    { label: 'Duplicate', icon: 'copy', hint: 'Adds the same log to the current line', onClick: function () { duplicateLog(id); } },
+    { label: l.pinned ? 'Unpin' : 'Pin', icon: l.pinned ? 'pin-angle' : 'pin-angle-fill', onClick: function () { togglePin(id); } },
+    { label: 'Delete', icon: 'trash3', danger: true, onClick: function () { deleteLog(id); } }
+  ]);
+}
+function openEdit(id) {
+  var r = findRef(id); if (!r) return; editingId = id;
+  $('editNum').textContent = '#' + pad2(r.idx + 1); $('editSub').textContent = lineLabel(r.line) + '. Changes apply to this log only.';
+  $('editFeet').value = r.log.feet; $('editInches').value = r.log.inches; $('editGirth').value = r.log.girth;
+  validateEdit(true); $('editSheet').showModal(); $('editGirth').focus(); $('editGirth').select();
+}
+function validateEdit(silent) {
+  var fR = $('editFeet').value.trim(), iR = $('editInches').value.trim(), gR = $('editGirth').value.trim(), f = Number(fR), i = Number(iR), g = Number(gR), errs = {};
+  if (fR === '' || !Number.isInteger(f) || f < 1 || f > MAX_FEET) errs.editFeet = 'Whole feet, 1 to ' + MAX_FEET + '.';
+  if (iR === '' || !Number.isInteger(i) || i < 0 || i > 11) errs.editInches = 'Whole inches, 0 to 11.';
+  if (gR === '' || !isFinite(g) || g <= 0 || g > MAX_GIRTH) errs.editGirth = 'Greater than 0, up to ' + MAX_GIRTH + '.';
+  ['editFeet', 'editInches', 'editGirth'].forEach(function (id) { var show = !silent && errs[id]; $(id).classList.toggle('is-invalid', !!show); $(id + 'Err').textContent = show ? errs[id] : ''; });
+  var valid = !Object.keys(errs).length;
+  $('editVolume').textContent = valid ? fmtV(calculateVolume(g, f, i)) : '--';
+  return valid ? { feet: f, inches: i, girth: g } : null;
+}
+function saveEdit(e) {
+  e.preventDefault();
+  var v = validateEdit(false); if (!v) { toast('Fix the highlighted values', 'warn'); return; }
+  var r = findRef(editingId); if (!r) { $('editSheet').close(); return; }
+  r.log.feet = v.feet; r.log.inches = v.inches; r.log.girth = v.girth;      // only this log changes
+  r.log.volume = calculateVolume(v.girth, v.feet, v.inches); ui.flashId = r.log.id;
+  addActivity('Log #' + (r.idx + 1) + ' (' + lineLabel(r.line) + ') updated: ' + v.girth + '" · ' + fmtVU(r.log.volume));
+  $('editSheet').close(); commit(); toast('Log updated');
+}
+async function deleteLog(id) {
+  var r = findRef(id); if (!r) return;
+  if (settings.confirmDelete) {
+    var ok = await confirmDialog({ title: 'Delete log #' + pad2(r.idx + 1) + '?', message: 'This log will be removed from the current load. You can undo right after.', confirmText: 'Delete', danger: true });
+    if (!ok) return; r = findRef(id); if (!r) return;
+  }
+  r.line.logs.splice(r.idx, 1);
+  deletedStack.push({ log: r.log, lineId: r.line.id, index: r.idx, sessionId: session.id }); if (deletedStack.length > 30) deletedStack.shift();
+  addActivity('Log deleted (' + lineLabel(r.line) + ', girth ' + r.log.girth + '")'); commit();
+  toast('Log #' + pad2(r.idx + 1) + ' deleted', 'info', { duration: 6000, key: 'deleted', action: { label: 'Undo', onClick: undoDelete } });
+}
+function undoDelete() {
+  var item = deletedStack.pop(), line = item && item.sessionId === session.id ? lineById(item.lineId) : null;
+  if (!line) { toast('Nothing to undo', 'warn'); return; }
+  line.logs.splice(Math.min(item.index, line.logs.length), 0, item.log); ui.flashId = item.log.id; addActivity('Log restored (' + lineLabel(line) + ')'); commit();
+  var more = deletedStack.filter(function (d) { return d.sessionId === session.id; }).length;
+  if (more) toast('Log restored. ' + more + ' more deleted.', 'success', { duration: 6000, key: 'deleted', action: { label: 'Undo', onClick: undoDelete } });
+  else toast('Log restored');
+}
+function togglePin(id) {
+  var r = findRef(id); if (!r) return; r.log.pinned = !r.log.pinned; commit();
+  toast(r.log.pinned ? 'Log pinned' : 'Log unpinned', 'info', { key: 'pin', duration: 1500 });
+}
+async function clearCurrentLogs() {
+  var cl = curLine(); if (!cl.logs.length) { toast('There are no logs in this line', 'info'); return; }
+  var ok = await confirmDialog({ title: 'Clear all logs?', message: 'Are you sure you want to clear all ' + cl.logs.length + ' logs from ' + lineLabel(cl) + '? This action cannot be undone. Completed lines, load details and height are kept.', confirmText: 'Clear all', danger: true });
+  if (!ok) return; cl.logs = []; deletedStack = []; addActivity('All logs cleared from ' + lineLabel(cl)); commit(); toast('All logs cleared', 'info');
+}
+
+/* ============================================================
+   LINES (batches). The user chooses each line's number.
+   ============================================================ */
+function suggestNextLineNumber() {
+  var nums = session.lines.map(function (l) { return parseInt(l.number, 10); }).filter(function (n) { return isFinite(n); });
+  return String((nums.length ? Math.max.apply(null, nums) : 0) + 1);
+}
+function validateLineNumber(v, ignoreId) {
+  v = v.trim();
+  if (!v) return 'Enter a line number.';
+  if (!/^[A-Za-z0-9][A-Za-z0-9 _\-./]{0,11}$/.test(v)) return 'Use up to 12 letters, digits or - _ . /';
+  return session.lines.some(function (l) { return l.id !== ignoreId && l.number.toLowerCase() === v.toLowerCase(); }) ? 'Line ' + v + ' already exists. Choose a different number.' : '';
+}
+function openLineSheet(cfg) {
+  lineCfg = cfg; $('lineTitle').textContent = cfg.title; $('lineSub').textContent = cfg.sub; $('lineLabel').textContent = cfg.label;
+  $('lineInput').value = cfg.value; $('lineInput').classList.remove('is-invalid'); $('lineErr').textContent = ''; $('lineOk').textContent = cfg.confirmText;
+  $('lineSheet').showModal(); $('lineInput').focus(); $('lineInput').select();
+}
+function submitLineSheet(e) {
+  e.preventDefault();
+  var v = $('lineInput').value.trim(), err = validateLineNumber(v, lineCfg.ignoreId);
+  $('lineInput').classList.toggle('is-invalid', !!err); $('lineErr').textContent = err;
+  if (err) { $('lineInput').focus(); return; }
+  $('lineSheet').close(); lineCfg.onSubmit(v);
+}
+function finishLine() {
+  var line = curLine(); if (!line.logs.length) { toast('Add at least one log before finishing the line', 'warn'); return; }
+  var st = lineStats(line);
+  openLineSheet({
+    title: 'Finish ' + lineLabel(line) + '?', sub: st.count + (st.count === 1 ? ' log' : ' logs') + ' · ' + fmtVU(st.volume) + '. Enter the number for the next line.',
+    label: 'Next line number', value: suggestNextLineNumber(), confirmText: 'Finish line', ignoreId: null,
+    onSubmit: function (next) {
+      line.completedAt = nowISO(); session.lines.push(newLine(next));
+      addActivity(lineLabel(line) + ' completed (' + st.count + ' logs, ' + fmtVU(st.volume) + '). Now on Line ' + next);
+      commit(); toast(lineLabel(line) + ' completed. Now on Line ' + next); feedbackTick('ok');
+    }
+  });
+}
+function renameLine(line) {
+  openLineSheet({ title: 'Change line number', sub: 'Currently ' + lineLabel(line) + '.', label: 'Line number', value: line.number, confirmText: 'Save', ignoreId: line.id,
+    onSubmit: function (v) { var old = line.number; if (v === old) return; line.number = v; addActivity('Line ' + old + ' renamed to Line ' + v); commit(); toast('Line number changed to ' + v); } });
+}
+function openLineDetail(id) { ui.detailLineId = id; renderLineDetail(); $('lineDetailSheet').showModal(); }
+function reopenLine(id) {
+  var line = lineById(id), cur = curLine(); if (!line || line === cur || !line.completedAt) return;
+  if (cur.logs.length) { toast('Finish the current line (or clear it) before reopening another line', 'warn', { duration: 5000 }); return; }
+  session.lines.splice(session.lines.length - 1, 1); session.lines.splice(session.lines.indexOf(line), 1);
+  line.completedAt = null; session.lines.push(line); addActivity(lineLabel(line) + ' reopened'); $('lineDetailSheet').close(); commit(); toast(lineLabel(line) + ' reopened');
+}
+
+/* ============================================================
+   LOADS (sessions), BACKUP AND RESTORE
+   ============================================================ */
+function adoptSession(s) {
+  session = s; deletedStack = []; ui.flashId = null; showGirthError(''); $('girthInput').value = ''; commit();
+}
+async function startNewSession() {
+  if (sessionHasContent(session)) {
+    var ok = await confirmDialog({ title: 'Start a new load?', message: 'The current load is saved to History first. You then start with blank details, height and lines.', confirmText: 'Start new load' });
+    if (!ok) return; archiveSession(session);
+  } else if (session.supplierSaved || session.supplier.name) {
+    var ok2 = await confirmDialog({ title: 'Start a new load?', message: 'The details of this load will be cleared. There are no logs yet.', confirmText: 'Start new load' });
+    if (!ok2) return;
+  }
+  adoptSession(newSession()); toast('New load started', 'info'); showView('home');
+}
+async function resetSession() {
+  if (!sessionHasContent(session)) { toast('There are no logs to reset yet', 'info'); return; }
+  var ok = await confirmDialog({ title: 'Reset load?', message: 'Are you sure? All lines and logs go back to a fresh Line 1. Load details and height are kept. A copy of the current load is saved in History.', confirmText: 'Reset load', danger: true });
+  if (!ok) return; archiveSession(session);
+  session.id = uid(); session.createdAt = nowISO(); session.lines = [newLine('1')]; session.activity = [{ t: session.createdAt, text: 'Load reset' }]; deletedStack = [];
+  commit(); toast('Load reset', 'info');
+}
+function saveCurrentSession() {
+  if (!sessionHasContent(session) && !session.supplier.name) { toast('Nothing to save yet', 'warn'); return; }
+  var ok = archiveSession(session); saveState(); renderAll(); toast(ok ? 'Load saved to history' : 'Could not save on this device', ok ? 'success' : 'error');
+}
+async function loadFromHistory(id) {
+  var raw = getHistory().find(function (x) { return x.id === id; }); if (!raw) return;
+  if (raw.id === session.id) { toast('That load is already open', 'info'); return; }
+  if (sessionHasContent(session)) {
+    var ok = await confirmDialog({ title: 'Open this saved load?', message: 'Your current load is saved to History first, so nothing is lost.', confirmText: 'Open load' });
+    if (!ok) return; archiveSession(session);
+  }
+  adoptSession(sanitizeSession(raw)); toast('Load restored', 'info'); showView('home');
+}
+async function deleteFromHistory(id) {
+  var ok = await confirmDialog({ title: 'Delete saved load?', message: 'This removes it from History permanently.', confirmText: 'Delete', danger: true });
+  if (!ok) return; setHistory(getHistory().filter(function (x) { return x.id !== id; })); renderAll(); toast('Saved load deleted', 'info');
+}
+function downloadBlob(blob, name) {
+  var url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+function exportJSON(full) {
+  var data = { app: 'timber-logs-manager', version: 2, type: full ? 'backup' : 'session', exportedAt: nowISO(), session: session };
+  if (full) { data.history = getHistory(); data.settings = settings; data.theme = themePref(); }
+  downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), (full ? 'timber_backup_' : 'timber_load_') + localDate() + '.json');
+  toast(full ? 'Backup downloaded' : 'Load exported');
+}
+function handleImport(file) {
+  if (!file) return; if (file.size > 5 * 1024 * 1024) { toast('That file is too large', 'error'); return; }
+  var fr = new FileReader(); fr.onerror = function () { toast('Could not read that file', 'error'); };
+  fr.onload = async function () {
+    var data; try { data = JSON.parse(fr.result); } catch (e) { toast('That file is not a valid backup', 'error'); return; }
+    if (!data || data.app !== 'timber-logs-manager' || !data.session) { toast('That file is not a Timber Logs Manager backup', 'error'); return; }
+    var imported = sanitizeSession(data.session), x = computeStats(imported);
+    var ok = await confirmDialog({ title: 'Restore this data?', message: 'File contains ' + x.count + ' logs in ' + x.totalLines + ' line(s)' + (imported.supplier.name ? ' for ' + imported.supplier.name : '') + '. Your current load is saved to History first.', confirmText: 'Restore' });
+    if (!ok) return; if (sessionHasContent(session)) archiveSession(session);
+    if (data.type === 'backup') {
+      if (Array.isArray(data.history)) {
+        var cur = getHistory(), ids = {}; cur.forEach(function (h) { ids[h.id] = true; });
+        setHistory(cur.concat(data.history.map(function (h) { var s = sanitizeSession(h); s.savedAt = str(h && h.savedAt) || nowISO(); return s; }).filter(function (h) { return !ids[h.id]; })));
+      }
+      if (data.settings) { settings = sanitizeSettings(data.settings); saveSettings(); buildGirthGrid(); syncSettingsUI(); }
+      if (data.theme === 'light' || data.theme === 'dark' || data.theme === 'system') applyTheme(data.theme, true);
+    }
+    adoptSession(imported); toast('Data restored'); showView('home');
+  };
+  fr.readAsText(file);
+}
+async function clearAllData() {
+  var ok = await confirmDialog({ title: 'Clear all data?', message: 'This permanently deletes the current load, History and your settings from this device. Download a backup first if you may need them.', confirmText: 'Delete everything', danger: true, requireText: 'RESET' });
+  if (!ok) return;
+  [KEYS.state, KEYS.settings, KEYS.sessions, KEYS.theme, KEYS.state + '.corrupt'].forEach(Store.remove);
+  settings = sanitizeSettings({}); applyTheme('system', false); buildGirthGrid(); syncSettingsUI(); adoptSession(newSession()); toast('All data cleared', 'info'); showView('home');
+}
+
+/* ============================================================
+   EXPORT: PDF (with line numbers), preview, share, CSV, print
+   ============================================================ */
+function exportPrechecks() {
+  if (!session.supplierSaved) { toast('Save the load details first', 'warn'); openLoadSheet(); return false; }
+  if (!allEntries().length) { toast('Add at least one log before exporting', 'warn'); return false; }
+  if (!window.jspdf || !window.jspdf.jsPDF) { toast('PDF library did not load. Check your internet connection and reload.', 'error'); return false; }
+  return true;
+}
+/* Each line is its own section headed by the line number the user chose */
+function buildPDF() {
+  var jsPDF = window.jspdf.jsPDF, doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  var pageW = doc.internal.pageSize.getWidth(), pageH = doc.internal.pageSize.getHeight();
+  var M = 14, y = 17, S = computeStats(), s = session.supplier, GREEN = [31, 77, 54], U = unitLabel();
+  function ensure(h) { if (y + h > pageH - 18) { doc.addPage(); y = 18; } }
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(20, 30, 25); doc.text(COMPANY.name, pageW / 2, y, { align: 'center' }); y += 6.5;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); doc.setTextColor(60, 70, 65);
+  [COMPANY.proprietor, COMPANY.contact, COMPANY.address].forEach(function (t) { doc.text(t, pageW / 2, y, { align: 'center' }); y += 5; });
+  y += 1; doc.setDrawColor(GREEN[0], GREEN[1], GREEN[2]); doc.setLineWidth(0.7); doc.line(M, y, pageW - M, y); y += 8;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]); doc.text('Timber Logs Report', pageW / 2, y, { align: 'center' }); y += 9;
+  doc.setTextColor(20, 30, 25); doc.setFontSize(12); doc.text('Supplier information', M, y); y += 6; doc.setFontSize(10.5);
+  function fit(text, maxW) { text = String(text || '-'); if (doc.getTextWidth(text) <= maxW) return text; while (text.length > 1 && doc.getTextWidth(text + '...') > maxW) text = text.slice(0, -1); return text + '...'; }
+  function kv(label, value, x, yy) { doc.setFont('helvetica', 'bold'); doc.text(label, x, yy); doc.setFont('helvetica', 'normal'); doc.text(fit(value, 62), x + 24, yy); }
+  kv('Supplier:', s.name, M, y); kv('Vehicle:', s.vehicle, 110, y); y += 6;
+  kv('Driver:', s.driver, M, y); kv('Log type:', s.logType || 'N/A', 110, y); y += 6;
+  kv('Date:', new Date().toLocaleDateString(), M, y); y += 10;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text('Summary', M, y); y += 2;
+  var sumTop = y;
+  doc.autoTable({ startY: y, theme: 'plain', tableWidth: 92,
+    body: [['Total lines', String(S.totalLines)], ['Total logs', String(S.count)], ['Total volume', fmtVU(S.volume)], ['Average girth', fmtG(S.avgGirth) + ' in'], ['Maximum girth', S.maxGirth + ' in'], ['Minimum girth', S.minGirth + ' in']],
+    styles: { fontSize: 10, cellPadding: 1.8 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 38 }, 1: { halign: 'right' } }, margin: { left: M, right: M } });
+  var sumEnd = doc.lastAutoTable.finalY, bx = 112, bw = pageW - M - bx, cx = bx + bw / 2;
+  doc.setFillColor(220, 235, 226); doc.setDrawColor(GREEN[0], GREEN[1], GREEN[2]); doc.setLineWidth(0.6); doc.roundedRect(bx, sumTop + 2, bw, 30, 3, 3, 'FD');
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(60, 70, 65); doc.text('Total volume', cx, sumTop + 10, { align: 'center' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]); doc.text(fmtV(S.volume), cx, sumTop + 22, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(U, cx, sumTop + 28, { align: 'center' });
+  y = Math.max(sumEnd, sumTop + 34) + 8;
+  ensure(30); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(20, 30, 25); doc.text('Line summary', M, y); y += 2;
+  doc.autoTable({ startY: y, theme: 'grid', head: [['Line', 'Logs', 'Volume (' + U + ')', 'Status']],
+    body: S.linesWithLogs.map(function (l) { var st = lineStats(l); return ['Line ' + l.number, st.count, fmtV(st.volume), l.completedAt ? 'Completed' : 'In progress']; }),
+    foot: [['Total', String(S.count), fmtV(S.volume), '']], showFoot: 'lastPage', styles: { fontSize: 10, cellPadding: 2, lineColor: [200, 208, 202] },
+    headStyles: { fillColor: GREEN, textColor: 255 }, footStyles: { fillColor: [224, 239, 231], textColor: [20, 30, 25], fontStyle: 'bold' },
+    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } }, margin: { left: M, right: M, bottom: 20 } });
+  y = doc.lastAutoTable.finalY + 10;
+  ensure(30); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(20, 30, 25); doc.text('Detailed logs', M, y); y += 3;
+  var serial = 0;
+  S.linesWithLogs.forEach(function (line) {
+    var st = lineStats(line), body = line.logs.map(function (l) { serial++; return [serial, line.number, formatHeight(l.feet, l.inches), l.girth, fmtV(l.volume)]; });
+    doc.autoTable({ startY: y + 2, theme: 'grid',
+      head: [[{ content: 'Line ' + line.number + '  -  ' + st.count + (st.count === 1 ? ' log' : ' logs') + '  -  ' + fmtV(st.volume) + ' ' + U + (line.completedAt ? '' : '  (in progress)'), colSpan: 5, styles: { halign: 'left' } }], ['S.No', 'Line', 'Height', 'Girth (in)', 'Volume (' + U + ')']],
+      body: body, foot: [[{ content: 'Line ' + line.number + ' total', colSpan: 4, styles: { halign: 'right' } }, fmtV(st.volume)]], showFoot: 'lastPage',
+      styles: { fontSize: 9.5, cellPadding: 1.9, lineColor: [200, 208, 202] }, headStyles: { fillColor: [224, 239, 231], textColor: [20, 30, 25], fontStyle: 'bold' },
+      footStyles: { fillColor: [240, 246, 242], textColor: [20, 30, 25], fontStyle: 'bold' }, alternateRowStyles: { fillColor: [247, 250, 248] },
+      columnStyles: { 0: { halign: 'center', cellWidth: 20 }, 1: { halign: 'center', cellWidth: 24 }, 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+      didParseCell: function (d) { if (d.section === 'head' && d.row.index === 0) { d.cell.styles.fillColor = GREEN; d.cell.styles.textColor = 255; d.cell.styles.fontSize = 10.5; } },
+      margin: { left: M, right: M, bottom: 20 } });
+    y = doc.lastAutoTable.finalY + 6;
+  });
+  ensure(46); y += 2;
+  doc.setFillColor(GREEN[0], GREEN[1], GREEN[2]); doc.roundedRect(M, y, pageW - 2 * M, 14, 2.5, 2.5, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(255, 255, 255); doc.text('TOTAL VOLUME: ' + fmtV(S.volume) + ' ' + U, pageW / 2, y + 9.2, { align: 'center' }); y += 34;
+  ensure(14); doc.setDrawColor(40, 50, 45); doc.setLineWidth(0.3); doc.line(M, y, M + 70, y); doc.line(pageW - M - 80, y, pageW - M, y);
+  doc.setTextColor(60, 70, 65); doc.setFontSize(9.5); doc.setFont('helvetica', 'normal');
+  doc.text('Supplier / driver signature', M, y + 5); doc.text('Authorised signature: ' + COMPANY.signatory, pageW - M - 80, y + 5);
+  var pages = doc.internal.getNumberOfPages();
+  for (var p = 1; p <= pages; p++) { doc.setPage(p); doc.setFontSize(9); doc.setTextColor(120, 130, 125); doc.text(COMPANY.name, M, pageH - 8); doc.text('Page ' + p + ' of ' + pages, pageW - M, pageH - 8, { align: 'right' }); }
+  return doc;
+}
+function withBusy(btn, fn) {
+  btn.classList.add('busy'); var old = btn.innerHTML; btn.innerHTML = '<span class="spinner" aria-hidden="true"></span> Working…';
+  setTimeout(function () { try { fn(); } finally { btn.classList.remove('busy'); btn.innerHTML = old; } }, 40);
+}
+function exportPDF() {
+  if (!exportPrechecks()) return;
+  withBusy($('exportPdfBtn'), function () { try { buildPDF().save('timber_logs.pdf'); toast('PDF generated'); } catch (err) { console.error(err); toast('Could not create the PDF', 'error'); } });
+}
+function previewPDF() {
+  if (!exportPrechecks()) return;
+  withBusy($('previewPdfBtn'), function () {
+    try {
+      var doc = buildPDF(), w = window.open(doc.output('bloburl'), '_blank');
+      if (w) toast('Preview opened', 'info'); else { doc.save('timber_logs.pdf'); toast('Pop-ups are blocked, so the PDF was downloaded instead', 'info', { duration: 5000 }); }
+    } catch (err) { console.error(err); toast('Could not create the PDF', 'error'); }
+  });
+}
+async function shareReport() {
+  if (!exportPrechecks()) return;
+  var doc; try { doc = buildPDF(); } catch (err) { console.error(err); toast('Could not create the PDF', 'error'); return; }
+  try {
+    var file = new File([doc.output('blob')], 'timber_logs.pdf', { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'Timber Logs Report', text: 'Timber Logs Report: ' + session.supplier.name + ', ' + fmtVU(computeStats().volume) }); toast('Report shared'); return;
+    }
+  } catch (err) { if (err && err.name === 'AbortError') return; }
+  doc.save('timber_logs.pdf'); toast('Sharing is not available here. The PDF was downloaded instead.', 'info', { duration: 5000 });
+}
+function csvCell(v) { var s = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function exportCSV() {
+  var entries = allEntries(); if (!entries.length) { toast('Add at least one log before exporting', 'warn'); return; }
+  var s = session.supplier, rows = [['S.No', 'Line', 'Supplier', 'Vehicle', 'Driver', 'Log Type', 'Height Feet', 'Height Inches', 'Girth', 'Volume (cu.ft)', 'Pinned', 'Date']];
+  entries.forEach(function (e) { rows.push([e.serial, e.line.number, s.name, s.vehicle, s.driver, s.logType, e.log.feet, e.log.inches, e.log.girth, e.log.volume.toFixed(2), e.log.pinned ? 'Yes' : 'No', localDate(e.log.createdAt)]); });
+  downloadBlob(new Blob(['\uFEFF' + rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n')], { type: 'text/csv;charset=utf-8' }), 'timber_logs.csv'); toast('CSV exported');
+}
+function renderPrint() {
+  var S = computeStats(), s = session.supplier, U = unitLabel(), serial = 0;
+  var sections = S.linesWithLogs.map(function (line) {
+    var st = lineStats(line), rows = line.logs.map(function (l) { serial++; return '<tr><td>' + serial + '</td><td>' + esc(line.number) + '</td><td>' + formatHeight(l.feet, l.inches) + '</td><td class="r">' + l.girth + '</td><td class="r">' + fmtV(l.volume) + '</td></tr>'; }).join('');
+    return '<table><thead><tr class="linehead"><th colspan="5">Line ' + esc(line.number) + ' - ' + st.count + ' logs - ' + fmtV(st.volume) + ' ' + U + (line.completedAt ? '' : ' (in progress)') + '</th></tr><tr><th>S.No</th><th>Line</th><th>Height</th><th class="r">Girth (in)</th><th class="r">Volume (' + U + ')</th></tr></thead><tbody>' + rows + '<tr><th colspan="4" class="r">Line ' + esc(line.number) + ' total</th><th class="r">' + fmtV(st.volume) + '</th></tr></tbody></table>';
+  }).join('') || '<p>No logs recorded.</p>';
+  var lineRows = S.linesWithLogs.map(function (l) { var st = lineStats(l); return '<tr><td>Line ' + esc(l.number) + '</td><td class="r">' + st.count + '</td><td class="r">' + fmtV(st.volume) + '</td></tr>'; }).join('');
+  $('printSheet').innerHTML = '<h1>' + esc(COMPANY.name) + '</h1><p class="co">' + esc(COMPANY.proprietor) + '<br>' + esc(COMPANY.contact) + '<br>' + esc(COMPANY.address) + '</p><div class="rule"></div><h1 style="font-size:14pt;color:#1f4d36">Timber Logs Report</h1>' +
+    '<table class="load"><tr><td><b>Supplier:</b> ' + esc(s.name || '-') + '</td><td><b>Vehicle:</b> ' + esc(s.vehicle || '-') + '</td></tr><tr><td><b>Driver:</b> ' + esc(s.driver || '-') + '</td><td><b>Log type:</b> ' + esc(s.logType || 'N/A') + '</td></tr><tr><td colspan="2"><b>Date:</b> ' + esc(new Date().toLocaleDateString()) + '</td></tr></table>' +
+    '<h2>Summary</h2><table><tr><th>Total lines</th><td>' + S.totalLines + '</td><th>Total logs</th><td>' + S.count + '</td></tr><tr><th>Average girth</th><td>' + fmtG(S.avgGirth) + ' in</td><th>Max / min girth</th><td>' + S.maxGirth + ' / ' + S.minGirth + ' in</td></tr></table>' +
+    '<h2>Line summary</h2><table><thead><tr><th>Line</th><th class="r">Logs</th><th class="r">Volume (' + U + ')</th></tr></thead><tbody>' + lineRows + '</tbody></table><h2>Detailed logs</h2>' + sections +
+    '<p class="big">TOTAL VOLUME: ' + fmtV(S.volume) + ' ' + U + '</p><div class="sign"><div>Supplier / driver signature</div><div>Authorised signature: ' + esc(COMPANY.signatory) + '</div></div>';
+}
+function printReport() { if (!allEntries().length) toast('There are no logs to print yet', 'warn'); renderPrint(); window.print(); }
+
+/* ============================================================
+   NAVIGATION (no page reloads)
+   ============================================================ */
+var VIEWS = ['home', 'loads', 'measure', 'logs', 'reports', 'settings'];
+function showView(name, fromHash) {
+  if (!authSession()) { showAuth('login'); return; }
+  if (VIEWS.indexOf(name) < 0) name = 'home';
+  if (name === 'logs' && ui.view !== 'logs') ui.logsFrom = (ui.view === 'home' || ui.view === 'loads') ? ui.view : 'measure';
+  ui.view = name;
+  VIEWS.forEach(function (v) { $('view-' + v).hidden = v !== name; });
+  var navName = name === 'logs' ? 'measure' : name;
+  document.querySelectorAll('.bottom-nav button').forEach(function (b) { if (b.dataset.view === navName) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+  if (!fromHash && location.hash !== '#' + name) { try { location.hash = name; } catch (e) {} }
+  if (name === 'settings') syncSettingsUI();
+  renderAll(); window.scrollTo(0, 0); watchHero();
+}
+function gotoMeasure() { showView('measure'); }
+function measureHeader() { document.documentElement.style.setProperty('--hdr-h', $('topbar').offsetHeight + 'px'); }
+/* Show a compact running total once the hero card scrolls out of view */
+function watchHero() {
+  if (!window.IntersectionObserver) return;
+  if (hdrObserver) hdrObserver.disconnect();
+  $('miniBar').hidden = true;
+  if (ui.view !== 'measure') return;
+  hdrObserver = new IntersectionObserver(function (ents) {
+    var out = !ents[0].isIntersecting && ents[0].boundingClientRect.top < 0 && ui.view === 'measure';
+    $('miniBar').hidden = !out || window.innerWidth >= 992;
+  }, { rootMargin: '-' + ($('topbar').offsetHeight || 60) + 'px 0px 0px 0px' });
+  hdrObserver.observe($('hero'));
+}
+
+/* ============================================================
+   SETTINGS + THEME
+   ============================================================ */
+function themePref() { try { var p = localStorage.getItem(KEYS.theme); return (p === 'light' || p === 'dark') ? p : 'system'; } catch (e) { return 'system'; } }
+function resolvedTheme(pref) { return pref === 'system' ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : pref; }
+function applyTheme(pref, persist) {
+  var t = resolvedTheme(pref);
+  document.documentElement.setAttribute('data-theme', t);
+  $('themeBtn').innerHTML = '<i class="bi bi-' + (t === 'dark' ? 'sun' : 'moon-stars') + '" aria-hidden="true"></i>';
+  $('themeBtn').setAttribute('aria-label', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+  $('setTheme').value = pref;
+  var meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', t === 'dark' ? '#1d3329' : '#1f4d36');
+  if (persist) { try { if (pref === 'system') localStorage.removeItem(KEYS.theme); else localStorage.setItem(KEYS.theme, pref); } catch (e) {} }
+}
+function syncSettingsUI() {
+  var sr = securityInfo(); if ($('securityUsername')) $('securityUsername').textContent = sr.username + ' · ' + (sr.signedIn ? 'Signed in' : 'Signed out');
+  $('setTheme').value = themePref(); $('setUnit').value = settings.unit; $('setDecimals').value = String(settings.decimals); $('setQuick').value = settings.quickGirths;
+  $('setTapAdd').checked = settings.tapAdd; $('setAutoFocus').checked = settings.autoFocus; $('setConfirmDelete').checked = settings.confirmDelete;
+  $('setFeedback').checked = settings.feedback; $('setSaveStatus').checked = settings.showSaveStatus;
+  $('setAutoLock').value = String(settings.autoLockMinutes); $('setQuickErr').textContent = '';
+}
+function applyQuickSetting() {
+  var txt = $('setQuick').value.trim();
+  if (!parseGirthList(txt).length) { $('setQuickErr').textContent = 'Enter at least one valid girth, e.g. 16-45.'; return; }
+  $('setQuickErr').textContent = ''; settings.quickGirths = txt; saveSettings(); buildGirthGrid(); renderAll();
+  toast('Quick girth values updated', 'success', { key: 'settings', duration: 1600 });
+}
+
+/* ============================================================
+   EVENT WIRING
+   ============================================================ */
+function wireEvents() {
+  // Navigation
+  document.querySelectorAll('.bottom-nav button').forEach(function (b) { b.addEventListener('click', function () { showView(b.dataset.view); }); });
+  window.addEventListener('hashchange', function () { if (!authSession()) { showAuth('login'); return; } var h = location.hash.replace('#', ''); if (h !== ui.view) showView(h, true); });
+  window.addEventListener('resize', function () { measureHeader(); watchHero(); });
+  $('backBtn').addEventListener('click', function () { showView(ui.view === 'logs' ? ui.logsFrom : 'home'); });
+  $('themeBtn').addEventListener('click', function () { applyTheme(resolvedTheme(themePref()) === 'dark' ? 'light' : 'dark', true); });
+  $('menuBtn').addEventListener('click', function () {
+    openActions('Measure menu', supplierLine(), [
+      { label: 'Finish line', icon: 'flag', hint: 'Close ' + lineLabel(curLine()) + ' and start the next', onClick: finishLine },
+      { label: 'Change line number', icon: 'pencil', onClick: function () { renameLine(curLine()); } },
+      { label: 'All logs', icon: 'list-ul', onClick: function () { showView('logs'); } },
+      { label: 'Load details', icon: 'person-badge', onClick: openLoadSheet },
+      { label: 'Load information', icon: 'info-circle', onClick: function () { renderInfo(computeStats()); $('infoSheet').showModal(); } }
+    ]);
+  });
+
+  // Home
+  $('continueBtn').addEventListener('click', gotoMeasure);
+  $('editLoadBtn').addEventListener('click', openLoadSheet);
+  $('qaNew').addEventListener('click', startNewSession);
+  $('qaLoads').addEventListener('click', function () { ui.loadsTab = 'current'; showView('loads'); });
+
+  // Load details sheet
+  $('loadForm').addEventListener('submit', saveSupplier);
+  $('loadCancel').addEventListener('click', function () { $('loadSheet').close(); });
+  SUPPLIER_FIELDS.forEach(function (f) { $(f.id).addEventListener('input', function () { $(f.id).classList.remove('is-invalid'); $(f.id + 'Err').textContent = ''; }); });
+
+  // Height
+  $('changeHeightBtn').addEventListener('click', openHeightSheet);
+  $('heightChips').addEventListener('click', function (e) { var b = e.target.closest('.hchip'); if (b) setHeight(parseInt(b.dataset.hf, 10), parseInt(b.dataset.hi, 10)); });
+  $('hsFeet').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; ui.hSel.feet = Number(b.dataset.hf); $('hsErr').textContent = ''; renderHeightSheet(); });
+  $('hsInches').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; ui.hSel.inches = Number(b.dataset.hi); renderHeightSheet(); });
+  $('hsApply').addEventListener('click', function () { if (setHeight(ui.hSel.feet, ui.hSel.inches)) $('heightSheet').close(); });
+  $('hsClear').addEventListener('click', function () { session.currentHeight = null; addActivity('Height cleared'); $('heightSheet').close(); commit(); toast('Height cleared', 'info'); });
+  $('loadBanner').addEventListener('click', openLoadSheet);
+
+  // Measuring
+  $('girthGrid').addEventListener('click', function (e) { var b = e.target.closest('.gbtn'); if (b) onGirthTap(b); });
+  $('tapAddToggle').addEventListener('change', function () { settings.tapAdd = $('tapAddToggle').checked; saveSettings(); renderMeasure(computeStats()); toast(settings.tapAdd ? 'Tap adds the log instantly' : 'Tap fills the box; press ADD LOG', 'info', { key: 'tapmode', duration: 1800 }); });
+  $('girthInput').addEventListener('input', function () { ui.typedGirth = true; showGirthError(''); markGirthSelected(); });
+  $('girthInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addLogFromInput(); } });
+  $('girthInput').addEventListener('focus', function () { setTimeout(function () { if ($('customWrap').scrollIntoView) $('customWrap').scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 300); });
+  $('clearGirthBtn').addEventListener('click', function () { $('girthInput').value = ''; showGirthError(''); markGirthSelected(); $('girthInput').focus(); });
+  $('addLogBtn').addEventListener('click', addLogFromInput);
+  $('finishLineBtn').addEventListener('click', finishLine);
+  $('viewAllBtn').addEventListener('click', function () { showView('logs'); });
+  $('emptyAddBtn').addEventListener('click', gotoMeasure);
+
+  // Log rows: tap a row (or its menu) for actions. Works in every list.
+  document.addEventListener('click', function (e) { var row = e.target.closest('.lrow'); if (row) openLogActions(row.dataset.id); });
+  document.addEventListener('keydown', function (e) { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('lrow')) { e.preventDefault(); openLogActions(e.target.dataset.id); } });
+  $('clearLogsBtn').addEventListener('click', clearCurrentLogs);
+  $('logsFinishBtn').addEventListener('click', finishLine);
+
+  // Filter / sort / search
+  $('filterToggle').addEventListener('click', function () { var p = $('filterPanel'), open = p.hidden; p.hidden = !open; $('filterToggle').setAttribute('aria-expanded', open); });
+  function refreshList() { ui.logLimit = PAGE_SIZE; renderLogsView(); }
+  $('searchInput').addEventListener('input', function () { ui.filter.q = $('searchInput').value; refreshList(); });
+  $('fField').addEventListener('change', function () { ui.filter.field = $('fField').value; refreshList(); });
+  $('fScope').addEventListener('change', function () { ui.scope = $('fScope').value; refreshList(); });
+  $('sortSelect').addEventListener('change', function () { ui.sort = $('sortSelect').value; refreshList(); });
+  $('fPinned').addEventListener('change', function () { ui.filter.pinned = $('fPinned').checked; refreshList(); });
+  function clearFilters() { ui.filter = { field: 'any', q: '', pinned: false }; ui.scope = 'current'; $('fField').value = 'any'; $('searchInput').value = ''; $('fPinned').checked = false; $('fScope').value = 'current'; refreshList(); }
+  $('filterClear').addEventListener('click', clearFilters); $('noMatchClear').addEventListener('click', clearFilters);
+  $('showMoreBtn').addEventListener('click', function () { ui.logLimit += PAGE_SIZE; renderLogsView(); });
+
+  // Loads and lines
+  $('segCurrent').addEventListener('click', function () { ui.loadsTab = 'current'; renderLoads(computeStats()); });
+  $('segHistory').addEventListener('click', function () { ui.loadsTab = 'history'; renderLoads(computeStats()); });
+  $('lcEditBtn').addEventListener('click', openLoadSheet);
+  $('linesFinishBtn').addEventListener('click', finishLine);
+  $('linesRenameBtn').addEventListener('click', function () { renameLine(curLine()); });
+  $('linesOpenCur').addEventListener('click', function () { openLineDetail(curLine().id); });
+  $('linesList').addEventListener('click', function (e) { var b = e.target.closest('[data-openline]'); if (b) openLineDetail(b.dataset.openline); });
+  $('ldRename').addEventListener('click', function () { var l = lineById(ui.detailLineId); if (l) renameLine(l); });
+  $('ldReopen').addEventListener('click', function () { reopenLine(ui.detailLineId); });
+  $('lineForm').addEventListener('submit', submitLineSheet);
+  $('lineCancel').addEventListener('click', function () { $('lineSheet').close(); });
+  $('lineInput').addEventListener('input', function () { $('lineInput').classList.remove('is-invalid'); $('lineErr').textContent = ''; });
+  $('sessInfoBtn').addEventListener('click', function () { renderInfo(computeStats()); $('infoSheet').showModal(); });
+  $('sessResetBtn').addEventListener('click', resetSession);
+  $('sessNewBtn').addEventListener('click', startNewSession);
+  $('saveSessionBtn').addEventListener('click', saveCurrentSession);
+  $('histList').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-sid]'); if (!b) return; var id = b.dataset.sid;
+    openActions(b.querySelector('.li-name').textContent, b.querySelector('.li-meta').textContent, [
+      { label: 'Open this load', icon: 'folder2-open', onClick: function () { loadFromHistory(id); } },
+      { label: 'Delete', icon: 'trash3', danger: true, onClick: function () { deleteFromHistory(id); } }
+    ]);
+  });
+
+  // Edit sheet
+  $('editForm').addEventListener('submit', saveEdit);
+  ['editFeet', 'editInches', 'editGirth'].forEach(function (id) { $(id).addEventListener('input', function () { validateEdit(false); }); });
+  $('editCancel').addEventListener('click', function () { $('editSheet').close(); });
+
+  // Sheet helpers: close buttons, backdrop tap
+  document.querySelectorAll('dialog').forEach(function (d) {
+    d.addEventListener('click', function (e) { if (e.target === d && d.id !== 'contDlg') d.close(); });
+    d.querySelectorAll('[data-close]').forEach(function (b) { b.addEventListener('click', function () { d.close(); }); });
+  });
+  $('actCancel').addEventListener('click', function () { $('actionSheet').close(); });
+
+  // Reports
+  $('exportPdfBtn').addEventListener('click', exportPDF); $('previewPdfBtn').addEventListener('click', previewPDF); $('sharePdfBtn').addEventListener('click', shareReport);
+  $('exportCsvBtn').addEventListener('click', exportCSV); $('printBtn').addEventListener('click', printReport);
+  var rz; window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(function () { if (ui.view === 'reports') renderGirthChart(); }, 150); });
+
+  // Settings
+  $('changePasswordBtn').addEventListener('click', changeLocalPassword);
+  $('logoutBtn').addEventListener('click', async function () {
+    var ok = await confirmDialog({ title:'Logout?', message:'You will need to sign in again to access Timber Logs Manager. Your timber data will not be deleted.', confirmText:'Logout', danger:true });
+    if (ok) await logout();
+  });
+
+  $('setTheme').addEventListener('change', function () { applyTheme($('setTheme').value, true); });
+  $('setUnit').addEventListener('change', function () { settings.unit = $('setUnit').value; saveSettings(); renderAll(); });
+  $('setDecimals').addEventListener('change', function () { settings.decimals = parseInt($('setDecimals').value, 10) || 2; saveSettings(); renderAll(); });
+  $('setQuick').addEventListener('change', applyQuickSetting);
+  $('setQuickReset').addEventListener('click', function () { $('setQuick').value = DEFAULT_QUICK; applyQuickSetting(); });
+  $('setTapAdd').addEventListener('change', function () { settings.tapAdd = $('setTapAdd').checked; saveSettings(); });
+  $('setAutoFocus').addEventListener('change', function () { settings.autoFocus = $('setAutoFocus').checked; saveSettings(); });
+  $('setConfirmDelete').addEventListener('change', function () { settings.confirmDelete = $('setConfirmDelete').checked; saveSettings(); });
+  $('setFeedback').addEventListener('change', function () { settings.feedback = $('setFeedback').checked; saveSettings(); if (settings.feedback) feedbackTick('ok'); });
+  $('setSaveStatus').addEventListener('change', function () { settings.showSaveStatus = $('setSaveStatus').checked; saveSettings(); renderSaveStatus(); });
+  $('setAutoLock').addEventListener('change', function () { settings.autoLockMinutes = Number($('setAutoLock').value); saveSettings(); resetAutoLockTimer(); toast(settings.autoLockMinutes ? 'Automatic app lock enabled.' : 'Automatic app lock disabled.', 'info'); });
+  $('setDefaults').addEventListener('click', function () { var keep = settings.recentHeights; settings = sanitizeSettings({ recentHeights: keep }); saveSettings(); syncSettingsUI(); buildGirthGrid(); renderAll(); toast('Settings restored', 'info'); });
+  $('exportJsonBtn').addEventListener('click', function () { exportJSON(false); }); $('backupBtn').addEventListener('click', function () { exportJSON(true); });
+  $('importBtn').addEventListener('click', function () { $('importFile').click(); });
+  $('importFile').addEventListener('change', function () { handleImport($('importFile').files[0]); $('importFile').value = ''; });
+  $('clearDataBtn').addEventListener('click', clearAllData);
+
+  // Keyboard shortcuts (Enter in the girth box is above; Escape closes sheets natively)
+  ['pointerdown','keydown','touchstart','input'].forEach(function (evt) {
+    document.addEventListener(evt, function () { if (authSession() && vault.unlocked) resetAutoLockTimer(); }, { passive: true });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (!authSession()) return;
+    var mod = e.ctrlKey || e.metaKey; if (!mod || e.altKey) return; var k = e.key.toLowerCase();
+    if (k === 's') { e.preventDefault(); if (saveState()) toast('Data saved'); else toast('Could not save on this device', 'error'); }
+    else if (k === 'e') { e.preventDefault(); exportPDF(); }
+    else if (k === 'p') { renderPrint(); }
+  });
+  window.addEventListener('beforeunload', function () { if (authSession()) saveState(); });
+  document.addEventListener('visibilitychange', function () { if (document.hidden && authSession()) saveState(); resetAutoLockTimer(); });
+  window.addEventListener('beforeprint', renderPrint);
+  if (window.matchMedia) { var mq = window.matchMedia('(prefers-color-scheme: dark)'); if (mq.addEventListener) mq.addEventListener('change', function () { if (themePref() === 'system') applyTheme('system', false); }); }
+  // On-screen keyboard: hide the bottom bar so the input and ADD LOG stay visible
+  if (window.visualViewport) { window.visualViewport.addEventListener('resize', function () { document.body.classList.toggle('kb-open', (window.innerHeight - window.visualViewport.height) > 140); }); }
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+var appStarted = false;
+function init() {
+  if (appStarted) return;
+  appStarted = true;
+  settings = sanitizeSettings(Store.read(KEYS.settings, {}));
+  var loaded = loadSavedSession(); session = loaded.session;
+  buildGirthGrid(); buildHeightSheet();
+  $('appVersion').textContent = APP_VERSION; $('aboutCompany').textContent = COMPANY.name;
+  applyTheme(themePref(), false); syncSettingsUI(); wireEvents(); measureHeader();
+  showView(location.hash.replace('#', '') || 'home', true);
+  ui.lastSaved = loaded.hadData ? new Date() : null; renderSaveStatus();
+  if (window.ResizeObserver) new ResizeObserver(measureHeader).observe($('topbar'));
+
+  // Offer to continue the previous load when the app is reopened (not on a simple refresh of this tab)
+  var answered = false; try { answered = !!sessionStorage.getItem('tlm.continued'); } catch (e) {}
+  if (loaded.hadData && !answered) {
+    var S = computeStats();
+    $('contText').textContent = (session.supplier.name || 'Untitled load') + ' · ' + lineLabel(curLine()) + ' · ' + S.count + ' logs · ' + fmtVU(S.volume) + '. Last activity ' + longDateTime((session.activity[session.activity.length - 1] || {}).t || session.createdAt) + '.';
+    var mark = function () { try { sessionStorage.setItem('tlm.continued', '1'); } catch (e) {} };
+    $('contContinue').addEventListener('click', function () { mark(); $('contDlg').close(); toast('Session restored', 'info'); });
+    $('contNew').addEventListener('click', function () { mark(); $('contDlg').close(); if (sessionHasContent(session)) archiveSession(session); adoptSession(newSession()); toast('New load started. The previous one is in History.', 'info', { duration: 4500 }); });
+    $('contDlg').addEventListener('close', mark);
+    $('contDlg').showModal();
+  } else { try { sessionStorage.setItem('tlm.continued', '1'); } catch (e) {} }
+}
+window.scrollToTop = function () { window.scrollTo({ top: 0, behavior: 'smooth' }); };
+window.goToLogs = function () { showView('logs'); };
+window.goToSummary = function () { showView('reports'); };
+/* Authentication UI must be wired before the authentication gate.
+   The main application itself is intentionally initialized only after login. */
+function wireAuthEvents() {
+  $('authForm').addEventListener('submit', submitAuth);
+  $('authTogglePassword').addEventListener('click', function () { togglePassword('authPassword', 'authTogglePassword'); });
+  $('authToggleConfirm').addEventListener('click', function () { togglePassword('authConfirmPassword', 'authToggleConfirm'); });
+  $('authPassword').addEventListener('input', function () { $('authPassword').classList.remove('is-invalid'); setAuthError(''); });
+  $('authUsername').addEventListener('input', function () { $('authUsername').classList.remove('is-invalid'); setAuthError(''); });
+  $('authConfirmPassword').addEventListener('input', function () { $('authConfirmPassword').classList.remove('is-invalid'); setAuthError(''); });
+}
+
+wireAuthEvents();
+
+/* Authentication gate: no main-app initialization happens before sign-in. */
+(function bootstrapAuth() {
+  var rec = authRecord();
+  if (rec) showAuth('login');
+  else showAuth('setup');
+})();
+})();
+</script>
+</body>
+</html>
