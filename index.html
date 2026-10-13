@@ -518,6 +518,48 @@ dialog.sheet[open]{animation:sheetup .22s ease-out}
 @media (min-width:480px) and (max-width:991px){.main{padding-left:var(--s6);padding-right:var(--s6)}}
 
 /* ============================================================
+   MOBILE MEASURE LAYOUT FIX
+   Keep the measuring workflow inside narrow phone viewports.
+   ============================================================ */
+@media (max-width: 600px){
+  html,body{width:100%;max-width:100%;overflow-x:hidden}
+  .shell,.main,.view,#view-measure,.measure-grid,.measure-main,.measure-side{width:100%;max-width:100%;min-width:0}
+  .main{padding:12px 10px 0;margin:0}
+  #view-measure{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+  .measure-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+  .measure-main{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+  .hero{min-width:0;padding:18px 12px 14px;border-radius:18px}
+  .hero-height{font-size:clamp(2.7rem,14vw,3.8rem);overflow-wrap:anywhere}
+  .hchips{max-width:100%;overscroll-behavior-x:contain}
+  .hero-stats{grid-template-columns:minmax(0,.9fr) minmax(0,.9fr) minmax(0,1.25fr);gap:6px}
+  .hero-stats>div{min-width:0}
+  .hero-stats .k{font-size:.64rem;letter-spacing:.04em}
+  .hero-stats .v{font-size:clamp(1.35rem,7vw,1.8rem);overflow-wrap:anywhere}
+  .hero-stats .v small{font-size:.65rem}
+  .hero-foot{align-items:center;gap:8px}
+  .added-msg{font-size:.85rem;min-width:0;overflow-wrap:anywhere}
+  .hero-foot .btn{flex:none;padding-inline:10px}
+  .girth-sec{min-width:0;gap:10px}
+  .girth-sec>.sec-head{flex-wrap:wrap;align-items:flex-start}
+  .girth-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+  .gbtn{min-width:0;min-height:58px;border-radius:12px}
+  .gbtn .gn{font-size:1.4rem}
+  .custom-wrap{grid-template-columns:minmax(0,1fr);min-width:0}
+  .custom-wrap .field,.input-wrap,.input-wrap .input{min-width:0;width:100%}
+  .btn-xl{min-height:56px}
+  .measure-side{position:static}
+  .card{min-width:0}
+  .rlist,.lrow{min-width:0;max-width:100%}
+}
+@media (max-width:360px){
+  .main{padding-left:8px;padding-right:8px}
+  .hero-stats .v{font-size:1.25rem}
+  .hero-stats .k{font-size:.59rem}
+  .girth-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .hero-foot .btn{font-size:.82rem}
+}
+
+/* ============================================================
    PRINT
    ============================================================ */
 #printSheet{display:none}
@@ -1085,7 +1127,7 @@ var KEYS = {      // same storage keys as the previous versions, so saved work c
   theme: 'timberLogsManager.theme'
 };
 var DEFAULT_QUICK = '16-45';
-var PRESETS = [{ feet: 1, inches: 9 }, { feet: 2, inches: 6 }, { feet: 2, inches: 9 }, { feet: 3, inches: 3 }, { feet: 3, inches: 6 }, { feet: 4, inches: 3 }];
+var PRESETS = [{ feet: 2, inches: 6 }, { feet: 2, inches: 9 }, { feet: 3, inches: 3 }, { feet: 3, inches: 6 }, { feet: 4, inches: 3 }];
 var UNITS = { cuft: { label: 'cu.ft', factor: 1 }, cum: { label: 'cu.m', factor: 0.028316846592 } };
 var MAX_GIRTH = 500, MAX_FEET = 99, MAX_SESSIONS = 50, MAX_ACTIVITY = 100, PAGE_SIZE = 100;
 var DEFAULT_SETTINGS = {
