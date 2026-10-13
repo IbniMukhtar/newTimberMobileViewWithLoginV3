@@ -317,6 +317,8 @@ h1,h2,h3,p{margin:0}
   position:fixed;left:0;right:0;top:var(--hdr-h);z-index:70;display:flex;justify-content:center;gap:var(--s4);align-items:center;
   padding:var(--s2) var(--s4);background:var(--amber);color:var(--amber-ink);font-weight:800;font-size:1rem;box-shadow:var(--shadow);
 }
+/* Explicitly honor the hidden attribute even though .mini-bar uses display:flex. */
+.mini-bar[hidden]{display:none!important}
 .girth-sec{display:grid;gap:var(--s3)}
 .girth-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
 @media (min-width:480px){.girth-grid{grid-template-columns:repeat(6,1fr);gap:var(--s2)}}
@@ -522,6 +524,9 @@ dialog.sheet[open]{animation:sheetup .22s ease-out}
    Keep the measuring workflow inside narrow phone viewports.
    ============================================================ */
 @media (max-width: 600px){
+  /* The floating running-total banner overlaps the girth grid on phones.
+     Totals are already visible in the Measure hero, so keep this banner desktop-only. */
+  .mini-bar{display:none!important}
   html,body{width:100%;max-width:100%;overflow-x:hidden}
   .shell,.main,.view,#view-measure,.measure-grid,.measure-main,.measure-side{width:100%;max-width:100%;min-width:0}
   .main{padding:12px 10px 0;margin:0}
